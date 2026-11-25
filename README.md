@@ -6,6 +6,13 @@
 
 **Canlı demo:** https://ferhatk47-byte.github.io/seismograph-scanner/
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
+  <img alt="Seismograph ekranı: üstte 101 coinin hacim anomali çizgisi, altında taranan coin sayısı, borsa durumu ve backtest sonucu, en altta kompozit skora göre sıralı aday coin listesi." src="docs/screenshot-light.png">
+</picture>
+
+*Ekran görüntüsü 25 Kasım 2026'da canlı veriyle alındı. O günkü doğrulama sonucu "failed" (IC 0,030, p ≈ 0,12): fiyat katmanı skoru o dönemde anlamlı bir öngörü gücü göstermedi. Araç bu sonucu saklamak yerine ana ekranda gösterecek şekilde tasarlandı.*
+
 ## Özellikler
 
 - **Dört borsa, tek evren:** Binance, Bybit, OKX ve KuCoin USDT spot pariteleri sembole göre birleştirilir, hacimler toplanır. Bir borsa erişimi engellerse tarama diğerleriyle devam eder.
