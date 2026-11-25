@@ -4,6 +4,8 @@
 
 > *English summary: a single-file browser scanner that merges Binance, Bybit, OKX and KuCoin USDT spot markets, scores coins on a price-layer composite, and validates that composite with a rolling information-coefficient (IC) backtest plus a forward test on saved daily snapshots.*
 
+**Canlı demo:** https://ferhatk47-byte.github.io/seismograph-scanner/
+
 ## Özellikler
 
 - **Dört borsa, tek evren:** Binance, Bybit, OKX ve KuCoin USDT spot pariteleri sembole göre birleştirilir, hacimler toplanır. Bir borsa erişimi engellerse tarama diğerleriyle devam eder.
