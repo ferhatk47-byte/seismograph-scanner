@@ -1,0 +1,1509 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#e9eef3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d1218" media="(prefers-color-scheme: dark)">
+<title>Seismograph Scanner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=IBM+Plex+Mono:wght@400;500&family=Schibsted+Grotesk:wght@400;500;600&display=swap">
+<style>
+/* Layout: chart-recorder paper ground, single column, sticky bar + live trace strip, bottom sheet for detail.
+   Charts live in a "scope" window: an always-dark instrument screen with single-hue amber phosphor.
+   Lit (filled, glowing) capsule = closed up, unlit (hollow, dim) capsule = closed down. */
+:root{
+  --bg:#e9eef3; --grid:#d7dfe7; --surface:#f7f9fb; --line:#c5d0db;
+  --ink:#121c28; --ink-2:#4a5a6c; --ink-3:#7a889a;
+  --pen:#2343d0; --pen-soft:#2343d01f;
+  --ember:#c4511d;
+  --good:#17805a; --warn:#a8680c; --risk:#b4231a;
+  --risk-soft:#b4231a17; --warn-soft:#a8680c17; --good-soft:#17805a17;
+  /* scope: one deliberate dark look in both themes */
+  --scope-bg:#0a0e13; --scope-edge:#1f2a36; --phos:#ffb347; --phos-dim:#ffb34766; --cyan:#62d4ff; --spark:#ff5a7a; --scope-text:#c9b48f;
+  --f-display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --f-body:"Schibsted Grotesk",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --r:10px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d1218;--grid:#18212b;--surface:#131a22;--line:#25313d;
+    --ink:#e2e8ee;--ink-2:#93a2b2;--ink-3:#66768a;
+    --pen:#7d95ff;--pen-soft:#7d95ff26;--ember:#ff8a4c;
+    --good:#4cc38a;--warn:#e3a44a;--risk:#ff7564;
+    --risk-soft:#ff756420;--warn-soft:#e3a44a1c;--good-soft:#4cc38a1c;
+    --scope-bg:#06090c;--scope-edge:#26323f;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d1218;--grid:#18212b;--surface:#131a22;--line:#25313d;
+  --ink:#e2e8ee;--ink-2:#93a2b2;--ink-3:#66768a;
+  --pen:#7d95ff;--pen-soft:#7d95ff26;--ember:#ff8a4c;
+  --good:#4cc38a;--warn:#e3a44a;--risk:#ff7564;
+  --risk-soft:#ff756420;--warn-soft:#e3a44a1c;--good-soft:#4cc38a1c;
+  --scope-bg:#06090c;--scope-edge:#26323f;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background-color:var(--bg);color:var(--ink);font:15px/1.5 var(--f-body);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:24px 24px;padding-bottom:env(safe-area-inset-bottom,0px)}
+button{font:inherit;color:inherit}
+a{color:var(--pen)}
+:focus-visible{outline:2px solid var(--pen);outline-offset:2px}
+.wrap{max-width:760px;margin:0 auto;padding-inline:16px}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+
+.top{position:sticky;top:0;z-index:20;padding-top:env(safe-area-inset-top,0px);background:var(--bg);border-bottom:1px solid var(--line)}
+.bar{display:flex;align-items:center;gap:10px;padding-block:10px}
+.brand{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+.brand h1{margin:0;font:800 25px/1 var(--f-display);letter-spacing:.03em;text-transform:uppercase}
+.brand small{color:var(--ink-3);font:500 10.5px/1 var(--f-mono);letter-spacing:.05em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.btn{border:1.5px solid var(--ink);background:var(--ink);color:var(--bg);border-radius:999px;padding:8px 16px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.ghost{background:transparent;color:var(--ink)}
+.btn.small{padding:5px 12px;font-size:13px}
+.iconbtn{border:1px solid var(--line);background:var(--surface);border-radius:999px;width:38px;height:38px;display:grid;place-items:center;cursor:pointer;flex:none}
+
+.trace{position:relative;height:80px;border-top:1px solid var(--line);background:var(--surface);overflow:hidden}
+.trace canvas{display:block;width:100%;height:100%}
+.trace .lbl{position:absolute;left:16px;top:7px;font:500 10.5px/1.2 var(--f-mono);color:var(--ink-2);letter-spacing:.04em;text-transform:uppercase;pointer-events:none}
+.trace .lbl b{color:var(--pen);font-weight:500}
+.trace .scale{position:absolute;right:12px;bottom:5px;font:400 10px/1 var(--f-mono);color:var(--ink-3)}
+
+.summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-block:16px}
+.summary div{background:var(--surface);padding:10px 12px;min-width:0}
+.summary dt{font:500 10.5px/1.2 var(--f-mono);text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3)}
+.summary dd{margin:4px 0 0;font:600 20px/1.1 var(--f-display);letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.summary dd small{display:block;white-space:normal;font:400 10.5px/1.3 var(--f-mono);color:var(--ink-3);margin-top:3px;letter-spacing:0}
+.summary dd.pass{color:var(--good)} .summary dd.fail{color:var(--risk)} .summary dd.idle{color:var(--ink-3)}
+
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:12px;overflow-x:auto;scrollbar-width:none}
+.tab{border:0;background:none;padding:10px 11px;font-weight:600;color:var(--ink-3);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--ink);border-color:var(--pen)}
+
+details.settings{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);margin-bottom:12px}
+details.settings summary{cursor:pointer;padding:10px 14px;font-weight:600;list-style:none;display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+details.settings summary::-webkit-details-marker{display:none}
+details.settings summary span{color:var(--ink-3);font:400 12px/1.5 var(--f-mono);text-align:right}
+.setgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;padding:0 14px 14px}
+.setgrid label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--ink-2);min-width:0}
+.setgrid input:not([type=checkbox]),.setgrid select{font:500 14px var(--f-mono);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);width:100%;min-width:0}
+.sethead{grid-column:1/-1;font:500 10.5px var(--f-mono);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3);margin-top:4px}
+.setnote{grid-column:1/-1;font-size:12px;color:var(--ink-3);margin:-4px 0 0}
+.venuepick{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px}
+.venuepick label{flex-direction:row;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:5px 11px;background:var(--bg);font-size:13px;color:var(--ink);cursor:pointer}
+
+.toolbar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-bottom:10px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:none;padding:6px 11px;font-size:13px;cursor:pointer;color:var(--ink-2)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.check{display:inline-flex;gap:6px;align-items:center;font-size:13px;color:var(--ink-2);cursor:pointer}
+
+.list{display:flex;flex-direction:column;gap:8px}
+.row{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:4px 12px;align-items:center;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);padding:12px;text-align:left;cursor:pointer;width:100%}
+.row:hover{border-color:var(--ink-3)}
+.rk{font:500 12px var(--f-mono);color:var(--ink-3);align-self:start;padding-top:4px}
+.mid{min-width:0;display:flex;flex-direction:column;gap:6px}
+.symline{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.sym{font:800 22px/1 var(--f-display);letter-spacing:.03em}
+.px{font:400 12.5px var(--f-mono);color:var(--ink-2)}
+.chg.up{color:var(--good)} .chg.dn{color:var(--risk)}
+.vn{display:inline-flex;gap:2px}
+.vn i{font:500 9.5px/1 var(--f-mono);font-style:normal;width:15px;height:15px;display:grid;place-items:center;border:1px solid var(--line);border-radius:3px;color:var(--ink-3)}
+.vn i.p{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.mini{width:100%;height:34px;display:block}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{font:500 11px/1 var(--f-mono);padding:4px 7px;border-radius:5px;border:1px solid var(--line);color:var(--ink-2);white-space:nowrap}
+.chip.risk{color:var(--risk);border-color:transparent;background:var(--risk-soft)}
+.chip.warn{color:var(--warn);border-color:transparent;background:var(--warn-soft)}
+.chip.good{color:var(--good);border-color:transparent;background:var(--good-soft)}
+.chip.pen{color:var(--pen);border-color:transparent;background:var(--pen-soft)}
+.chip.busy{border-style:dashed;color:var(--ink-3)}
+.gauge{display:flex;flex-direction:column;align-items:flex-end;gap:4px;align-self:start}
+.gauge .n{font:800 30px/1 var(--f-display);color:var(--pen)}
+.gauge .cap{font:500 9.5px/1 var(--f-mono);color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase}
+.tri{display:flex;gap:3px;align-items:flex-end;height:22px}
+.tri i{display:block;width:7px;background:var(--pen);border-radius:2px 2px 0 0;opacity:.85}
+.more{margin:12px auto 4px;display:flex}
+.empty,.err{border:1px dashed var(--line);border-radius:var(--r);padding:20px;color:var(--ink-2);background:var(--surface)}
+.err{border-style:solid;border-color:var(--risk);color:var(--ink)}
+.err b{color:var(--risk)}
+
+.panel{display:flex;flex-direction:column;gap:14px}
+.card{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);padding:14px 16px;min-width:0}
+.card h3{margin:0 0 6px;font:800 19px/1.15 var(--f-display);letter-spacing:.03em;text-transform:uppercase;text-wrap:balance}
+.card p{margin:6px 0;color:var(--ink-2);max-width:65ch}
+.card ul{margin:6px 0;padding-left:18px;color:var(--ink-2)}
+.card li{margin:4px 0}
+.verdict{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.stamp{font:800 22px/1 var(--f-display);letter-spacing:.06em;text-transform:uppercase;padding:8px 12px;border:2px solid currentColor;border-radius:6px;transform:rotate(-2deg)}
+.stamp.pass{color:var(--good)} .stamp.fail{color:var(--risk)}
+.kv{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;font-size:13.5px}
+.kv dt{color:var(--ink-2)} .kv dd{margin:0;font-family:var(--f-mono);font-variant-numeric:tabular-nums;text-align:right}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{font:500 10.5px var(--f-mono);text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3)}
+th:first-child,td:first-child{text-align:left}
+td{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+tr.tot td{font-weight:500;border-top:1.5px solid var(--ink-3)}
+.pos{color:var(--good)} .neg{color:var(--risk)}
+svg text{font-family:var(--f-mono)}
+pre.code{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:400 11.5px/1.5 var(--f-mono);overflow-x:auto;margin:8px 0;color:var(--ink)}
+
+.srcs{display:flex;flex-direction:column}
+.src{display:grid;grid-template-columns:14px minmax(0,1fr) auto;gap:2px 10px;padding-block:10px;border-top:1px solid var(--line);align-items:start}
+.src:first-child{border-top:0}
+.dot{width:9px;height:9px;border-radius:50%;margin-top:6px;background:var(--line)}
+.dot.ok{background:var(--good)} .dot.err{background:var(--risk)} .dot.key{background:var(--warn)} .dot.off{background:transparent;border:1.5px solid var(--ink-3)}
+.src b{font-weight:600}
+.src .st{font:500 11px var(--f-mono);color:var(--ink-3);text-align:right;white-space:nowrap}
+.src .ds{grid-column:2/-1;font-size:12.5px;color:var(--ink-2)}
+
+.sheet{position:fixed;inset:0;z-index:50;display:flex;align-items:flex-end;justify-content:center;background:#0008}
+.sheet-in{background:var(--surface);width:100%;max-width:760px;max-height:92vh;overflow:auto;border-radius:16px 16px 0 0;border:1px solid var(--line);border-bottom:0;padding:8px 16px calc(24px + env(safe-area-inset-bottom,0px));animation:up .22s ease-out}
+@keyframes up{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}
+.grab{width:40px;height:4px;border-radius:2px;background:var(--line);margin:4px auto 10px}
+.shead{display:flex;align-items:flex-start;gap:12px;margin-bottom:10px}
+.shead .sym{font-size:34px}
+.shead .grow{flex:1;min-width:0}
+.sec{border-top:1px solid var(--line);padding-block:12px}
+.sec h4{margin:0 0 8px;font:500 11px/1 var(--f-mono);text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3);display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* scope window */
+.scope{background:var(--scope-bg);border:1px solid var(--scope-edge);border-radius:12px;padding:10px 10px 8px;position:relative;
+  box-shadow:inset 0 0 0 1px #ffffff08,inset 0 0 40px #000a}
+.scope-bar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.stabs,.ranges{display:inline-flex;gap:2px;background:#ffffff0a;border-radius:7px;padding:2px}
+.stabs button,.ranges button{border:0;background:none;color:var(--scope-text);font:500 11.5px/1 var(--f-mono);padding:6px 9px;border-radius:5px;cursor:pointer;letter-spacing:.03em;text-transform:uppercase}
+.stabs button[aria-pressed="true"]{background:var(--phos);color:#1a1206}
+.ranges button[aria-pressed="true"]{background:#ffffff1c;color:#fff}
+.scope canvas{display:block;width:100%;touch-action:pan-y}
+.readout{font:400 11.5px/1.45 var(--f-mono);color:var(--scope-text);min-height:2.9em;margin-top:6px;font-variant-numeric:tabular-nums}
+.readout b{color:var(--phos);font-weight:500}
+.scope-legend{display:flex;gap:12px;flex-wrap:wrap;font:400 11px var(--f-mono);color:#8c96a3;margin-top:2px}
+.scope-legend i{display:inline-block;width:12px;height:8px;border-radius:4px;vertical-align:0;margin-right:5px}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:8px}
+.stats div{background:#ffffff08;border-radius:6px;padding:6px 8px;min-width:0}
+.stats dt{font:500 9.5px/1.2 var(--f-mono);color:#8c96a3;text-transform:uppercase;letter-spacing:.05em}
+.stats dd{margin:2px 0 0;font:500 14px/1.2 var(--f-mono);color:var(--phos);white-space:nowrap}
+@media (max-width:420px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.legend{display:flex;gap:14px;flex-wrap:wrap;font:400 11.5px var(--f-mono);color:var(--ink-2);margin-top:4px}
+.links{display:flex;gap:8px;flex-wrap:wrap}
+.links a{font-weight:600;text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:7px 12px;font-size:13.5px}
+.fbar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin-top:3px}
+.fbar span{display:block;height:100%;background:var(--pen)}
+.frow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;padding-block:6px}
+.frow .nm{font-size:13.5px} .frow .vl{font:500 13px var(--f-mono);text-align:right}
+.frow .ds{grid-column:1/-1;font-size:12px;color:var(--ink-3)}
+.fund{display:flex;flex-direction:column;gap:12px}
+.fblock{border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
+.fblock .hd{display:flex;justify-content:space-between;gap:8px;align-items:baseline;margin-bottom:4px}
+.fblock .hd b{font-weight:600}
+.fblock .src-l{font:400 10.5px var(--f-mono);color:var(--ink-3);text-align:right}
+.fblock p{margin:4px 0;font-size:13px;color:var(--ink-2)}
+.news{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.news li{font-size:13px;line-height:1.35}
+.news a{text-decoration:none}
+.news small{display:block;color:var(--ink-3);font:400 11px var(--f-mono)}
+.muted{color:var(--ink-3)}
+footer{color:var(--ink-3);font-size:12px;padding-block:28px 36px;text-align:center}
+@media (prefers-reduced-motion: reduce){.sheet-in{animation:none}}
+@media (max-width:420px){.gauge .n{font-size:26px}.summary dd{font-size:17px}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap bar">
+    <div class="brand"><h1>Seismograph</h1><small id="status">starting</small></div>
+    <button class="iconbtn" id="themeBtn" type="button" aria-label="Toggle theme" title="Theme">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
+    </button>
+    <button class="btn" id="scanBtn" type="button">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M2 12h4l3-8 4 16 3-8h6"/></svg>
+      <span>Scan</span>
+    </button>
+  </div>
+  <div class="trace" aria-hidden="true">
+    <canvas id="traceCv"></canvas>
+    <div class="lbl" id="traceLbl">Volume anomaly trace · <b>waiting</b></div>
+    <div class="scale">amplitude = log(3d vol / 30d median)</div>
+  </div>
+</header>
+
+<main class="wrap">
+  <dl class="summary">
+    <div><dt>Scanned</dt><dd id="sumN" class="mono">–</dd></div>
+    <div><dt>Venues</dt><dd id="sumX" class="mono">–</dd></div>
+    <div><dt>Backtest</dt><dd id="sumV" class="idle">–</dd></div>
+  </dl>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-tab="list" id="tab-list">Candidates</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="val" id="tab-val">Validation</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="src" id="tab-src">Sources</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="meth" id="tab-meth">Method</button>
+  </div>
+
+  <section id="view-list">
+    <details class="settings" id="settingsBox">
+      <summary>Settings <span id="setSummary"></span></summary>
+      <div class="setgrid">
+        <div class="sethead">Exchanges</div>
+        <div class="venuepick" id="venuePick"></div>
+        <div class="sethead">Universe</div>
+        <label for="setSkip">Skip top N by volume
+          <input id="setSkip" type="number" min="0" max="100" step="1" inputmode="numeric"></label>
+        <label for="setSize">Universe size
+          <input id="setSize" type="number" min="30" max="300" step="10" inputmode="numeric"></label>
+        <label for="setMinVol">Min 24h volume, all venues ($)
+          <input id="setMinVol" type="number" min="0" step="100000" inputmode="numeric"></label>
+        <label for="setDeep">Deep-scan top N
+          <input id="setDeep" type="number" min="0" max="25" step="1" inputmode="numeric"></label>
+        <label class="check" for="setExcl" style="flex-direction:row;align-items:center;grid-column:1/-1"><input type="checkbox" id="setExcl"> Leave out stablecoins and tokenized stocks (detected from price behaviour)</label>
+        <div class="sethead">Free API keys and proxy (optional)</div>
+        <label for="keyGh">GitHub token
+          <input id="keyGh" type="password" autocomplete="off" spellcheck="false" placeholder="raises 60 → 5000 req/h"></label>
+        <label for="keyCg">CoinGecko demo key
+          <input id="keyCg" type="password" autocomplete="off" spellcheck="false" placeholder="steadier rate limit"></label>
+        <label for="keyMb">Mobula key
+          <input id="keyMb" type="password" autocomplete="off" spellcheck="false" placeholder="enables unlock schedules"></label>
+        <label for="keyProxy">CORS proxy URL
+          <input id="keyProxy" type="url" autocomplete="off" spellcheck="false" placeholder="https://….workers.dev"></label>
+        <p class="setnote">Keys stay in this browser and go only to their own service. The proxy is used only when an exchange blocks direct browser calls; see the Sources tab.</p>
+      </div>
+    </details>
+
+    <div class="toolbar">
+      <div class="seg" role="group" aria-label="Sort">
+        <button type="button" data-sort="score" aria-pressed="true">Composite</button>
+        <button type="button" data-sort="vol" aria-pressed="false">Volume</button>
+        <button type="button" data-sort="low" aria-pressed="false">BTC low</button>
+        <button type="button" data-sort="sq" aria-pressed="false">Squeeze</button>
+      </div>
+      <label class="check" for="hideFlag"><input type="checkbox" id="hideFlag"> Hide risk-flagged</label>
+      <label class="check" for="offBn"><input type="checkbox" id="offBn"> Not on Binance</label>
+      <button class="btn ghost small" type="button" id="expCsv" style="margin-left:auto" disabled>Export CSV</button>
+    </div>
+
+    <div id="list" class="list"></div>
+    <button class="btn ghost more" id="moreBtn" type="button" hidden>Show more</button>
+  </section>
+
+  <section id="view-val" hidden><div class="panel" id="valPanel"></div></section>
+
+  <section id="view-src" hidden>
+    <div class="panel">
+      <div class="card">
+        <h3>Live data sources</h3>
+        <p>Every number in the app comes from one of these. Status updates as calls succeed or fail.</p>
+        <div class="srcs" id="srcList"></div>
+      </div>
+      <div class="card">
+        <h3>If an exchange shows "blocked"</h3>
+        <p>Browsers only let a page read another site's data when that site allows it (CORS). Binance does. If Bybit, OKX or KuCoin refuse, the scan carries on with the others. To bring a blocked exchange back, deploy this free Cloudflare Worker and paste its URL into Settings. It only forwards to these three exchange hosts.</p>
+<pre class="code" id="workerCode">export default {
+  async fetch(req) {
+    const u = new URL(req.url).searchParams.get("url") || "";
+    if (!/^https:\/\/(api\.bybit\.com|www\.okx\.com|api\.kucoin\.com)\//.test(u))
+      return new Response("host not allowed", { status: 400 });
+    const r = await fetch(u, { headers: { "User-Agent": "seismograph" } });
+    return new Response(r.body, { status: r.status, headers: {
+      "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+  }
+};</pre>
+        <button class="btn ghost small" type="button" id="copyWorker">Copy code</button>
+      </div>
+      <div class="card">
+        <h3>Not available for free</h3>
+        <ul>
+          <li><b>Exchange reserves and net flows:</b> CryptoQuant, Glassnode and Arkham sell this. Building it from public explorers would only see known hot wallets, a lower bound that can mislead, so the rule stays empty.</li>
+          <li><b>Staking ratio outside Cosmos and Solana:</b> StakingRewards has no free API plan.</li>
+          <li><b>X/Twitter follower counts:</b> CoinGecko stopped returning community data on 28 Aug 2026. News coverage velocity stands in for social attention.</li>
+          <li><b>DefiLlama unlock data:</b> moved to its paid Pro API. Mobula's free plan covers unlocks instead.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="view-meth" hidden>
+    <div class="panel">
+      <div class="card">
+        <h3>Four exchanges, one universe</h3>
+        <p>USDT spot pairs from Binance, Bybit, OKX and KuCoin are merged by ticker symbol. Volume is summed across venues for the universe filter. Each coin's candles come from its <b>primary venue</b>, the one with the most 24h volume, so its volume history stays on one consistent book. Order-book depth is summed across every venue that lists it.</p>
+        <p>Stablecoins and tokenized stocks are left out by default, judged from price behaviour rather than names: a coin whose daily moves stay under 0.4% with price near $1 is a stablecoin; one whose weekend moves are under 35% of its weekday moves is tracking a market that closes on weekends. Against BTC, a stablecoin is just BTC upside down, so it distorts the "near low vs BTC" ranking.</p>
+        <p>Two coins on different exchanges can share a ticker. The merge cannot tell them apart, so check the venue letters on a row if something looks off.</p>
+      </div>
+      <div class="card">
+        <h3>Price layer (scored)</h3>
+        <dl class="kv" style="margin-top:6px">
+          <dt>Near low vs BTC</dt><dd>coin/BTC position in 120d range</dd>
+          <dt>Volatility squeeze</dt><dd>20d / 120d realized vol</dd>
+          <dt>Volume anomaly</dt><dd>3d mean / prior 30d median</dd>
+          <dt>Composite</dt><dd>mean of universe percentiles</dd>
+        </dl>
+      </div>
+      <div class="card">
+        <h3>Fundamental layer (shown, not scored)</h3>
+        <p>Dev activity, news velocity, catalysts, staking and unlocks are fetched for the top candidates and when you open a coin. They stay out of the composite because they cover only some coins and have no free history to backtest.</p>
+        <ul>
+          <li><b>Dev surge:</b> last 4 weeks of commits at least 1.5× the prior 12-week pace, with 20+ commits. <b>Dormant:</b> zero commits in 12 weeks.</li>
+          <li><b>News spike:</b> 7-day article count at least 2× the prior 3-week weekly average.</li>
+          <li><b>Catalyst:</b> mainnet, upgrade, listing, partnership, ETF, burn or airdrop in headlines within 21 days, or a GitHub release within 21 days.</li>
+          <li><b>Unlock risk:</b> 1% or more of circulating supply unlocking within 30 days.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Risk flags (not scored)</h3>
+        <ul>
+          <li><b>Pump-dump history:</b> a +30% day in the last 180 that fell back to within 5% of its pre-pump close inside 14 days.</li>
+          <li><b>Thin book:</b> ±2% depth across all venues under $20k, or more than 1% slippage on a $10k buy at the best venue.</li>
+          <li><b>Dilution:</b> circulating supply under 50% of total.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>How validation works</h3>
+        <p>The price-layer composite is recomputed at up to 18 past dates, 14 days apart, using only data up to each date (about 8 months). Its rank correlation (IC) with the next 14 calendar days of return is measured at each date.</p>
+        <p><b>Rule v3, fixed 31 Oct 2026 before any v3 result was seen:</b> pass only if mean IC ≥ 0.05, permutation p &lt; 0.05 (2000 shuffles) <i>and</i> a one-sided t-test of the per-date ICs gives p &lt; 0.05.</p>
+        <p><b>Why the t-test was added:</b> shuffling scores treats every coin as independent. When a market phase favours one type of coin for a few weeks, the shuffle test fires on noise. In a simulation with that kind of shared factor, the v2 rule passed 23–25% of pure-noise runs; v3 passed 3%.</p>
+        <p><b>Forward test:</b> the first scan of each UTC day saves its scores in this browser and checks them 14 days later. That is the only test free of hindsight.</p>
+        <p><b>Known weaknesses:</b> only coins listed today (survivorship), at most 18 observations, all in one stretch of market history.</p>
+      </div>
+      <div class="card">
+        <h3>Reading the scope</h3>
+        <p><b>Candles:</b> one amber phosphor. A lit, glowing capsule closed up; an unlit, hollow one closed down. Below the price runs a mirrored volume waveform, brightest in the 3-day anomaly window. Pink sparks mark pump-dump days.</p>
+        <p><b>vs BTC:</b> the top panel overlays the USDT price (amber) and the coin/BTC ratio (cyan), each on its own scale. The bottom panel is the rolling 30-day correlation of daily returns with BTC, drawn as a seismogram: cyan above zero, pink below.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>A ranking tool, not trading advice. Data: Binance, Bybit, OKX, KuCoin, CoinGecko, GitHub, cosmos.directory, Solana RPC, Mobula, cryptocurrency.cv.</footer>
+</main>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-in" role="dialog" aria-modal="true" aria-labelledby="sheetSym" id="sheetIn"></div>
+</div>
+
+<script>
+"use strict";
+// ==CORE START==
+const STABLE = new Set(["USDC","FDUSD","TUSD","USDP","DAI","BUSD","EUR","EURI","AEUR","USDE","PYUSD","XUSD","USD1","BFUSD","RLUSD","USDS","USDD","USDQ","TRY","BRL","GBP","PAXG","XAUT","WBTC","WBETH","BNSOL","STETH","USTC"]);
+// Binance (delisted) and Bybit/KuCoin leveraged tokens, explicit so JUP, SUPER, 1000SATS etc. survive.
+const LEVER = /^((BTC|ETH|BNB|XRP|ADA|DOT|LINK|LTC|TRX|XLM|EOS|FIL|SXP|UNI|YFI|AAVE|SUSHI|1INCH|BCH|XTZ)(UP|DOWN|BULL|BEAR)|[A-Z]{2,10}[2-5][LS])$/;
+const CFG = { win:120, minBars:122, pumpWin:180, pumpJump:0.30, pumpBack:1.05, pumpDays:14,
+  hist:420, fwd:14, anchors:18, minAnchors:8, step:14, perms:2000, icPass:0.05, pPass:0.05, tPass:0.05,
+  snapKeep:90, ruleVer:"v3 (2026-10-31)" };
+const DAY = 86400000;
+const VENUES = ["binance","bybit","okx","kucoin"];
+const VLETTER = {binance:"B",bybit:"Y",okx:"O",kucoin:"K"};
+const VNAME = {binance:"Binance",bybit:"Bybit",okx:"OKX",kucoin:"KuCoin"};
+
+function mean(a){let s=0;for(const x of a)s+=x;return a.length?s/a.length:NaN}
+function sd(a){const m=mean(a);let s=0;for(const x of a)s+=(x-m)*(x-m);return Math.sqrt(s/(a.length-1))}
+function median(a){const b=[...a].sort((x,y)=>x-y);const n=b.length;if(!n)return NaN;return n%2?b[(n-1)/2]:(b[n/2-1]+b[n/2])/2}
+function ranks(vals){
+  const idx=[];vals.forEach((v,i)=>{if(v!=null&&isFinite(v))idx.push(i)});
+  idx.sort((a,b)=>vals[a]-vals[b]);
+  const r=new Array(vals.length).fill(null);
+  for(let i=0;i<idx.length;){let j=i;while(j+1<idx.length&&vals[idx[j+1]]===vals[idx[i]])j++;
+    const avg=(i+j)/2+1;for(let k=i;k<=j;k++)r[idx[k]]=avg;i=j+1;}
+  return r;
+}
+function pctRank(vals){const r=ranks(vals);const m=r.filter(x=>x!=null).length;return r.map(x=>x==null?null:(m>1?(x-1)/(m-1):0.5))}
+function centered(v){const m=mean(v);const c=v.map(x=>x-m);let n=0;for(const x of c)n+=x*x;return {c,norm:Math.sqrt(n)}}
+function corr(a,b){const A=centered(a),B=centered(b);let s=0;for(let i=0;i<a.length;i++)s+=A.c[i]*B.c[i];return (A.norm&&B.norm)?s/(A.norm*B.norm):0}
+function spearman(a,b){return corr(ranks(a),ranks(b))}
+
+/* ---- candles: every venue normalized to {t,o,h,l,c,qv}, ascending, unfinished UTC day dropped ---- */
+function toSeries(rows,now){
+  // A candle is closed only when its own open time + 1 day has passed. This works for venues whose
+  // daily candle does not start at 00:00 UTC (it is mapped to the nearest UTC date and its offset kept).
+  const seen=new Map();let offSum=0,offN=0;
+  for(const r of rows){if(!isFinite(r.t)||!isFinite(r.c)||r.c<=0)continue;if(r.t+DAY>now)continue;
+    const t=Math.round(r.t/DAY)*DAY;offSum+=r.t-t;offN++;seen.set(t,{...r,t});}
+  const k=[...seen.values()].sort((a,b)=>a.t-b.t);
+  const s={t:[],o:[],h:[],l:[],c:[],qv:[]};
+  for(const r of k){s.t.push(r.t);s.o.push(r.o);s.h.push(r.h);s.l.push(r.l);s.c.push(r.c);s.qv.push(r.qv);}
+  s.idx=new Map(s.t.map((t,i)=>[t,i]));
+  s.offH=offN?Math.round(offSum/offN/3600e3):0;
+  return s;
+}
+// forward return by calendar date, so a missing day can't stretch a 14-day window
+function fwdReturn(s,T,days){const a=s.idx.get(T),b=s.idx.get(T+days*DAY);return (a==null||b==null)?null:s.c[b]/s.c[a]-1}
+function parseVenueKlines(venue,raw){
+  if(venue==="binance")return raw.map(r=>({t:+r[0],o:+r[1],h:+r[2],l:+r[3],c:+r[4],qv:+r[7]}));
+  if(venue==="bybit")return (raw.result&&raw.result.list||[]).map(r=>({t:+r[0],o:+r[1],h:+r[2],l:+r[3],c:+r[4],qv:+r[6]}));
+  if(venue==="okx")return (raw.data||[]).map(r=>({t:+r[0],o:+r[1],h:+r[2],l:+r[3],c:+r[4],qv:+r[7]}));
+  if(venue==="kucoin")return (raw.data||[]).map(r=>({t:+r[0]*1000,o:+r[1],c:+r[2],h:+r[3],l:+r[4],qv:+r[6]}));
+  return [];
+}
+function parseVenueTickers(venue,raw){
+  const out=[];
+  if(venue==="binance"){for(const t of raw){if(!t.symbol.endsWith("USDT")||!(+t.count>0))continue;out.push({base:t.symbol.slice(0,-4),sym:t.symbol,last:+t.lastPrice,chg:+t.priceChangePercent/100,qv:+t.quoteVolume});}}
+  if(venue==="bybit"){for(const t of (raw.result&&raw.result.list)||[]){if(!t.symbol.endsWith("USDT"))continue;out.push({base:t.symbol.slice(0,-4),sym:t.symbol,last:+t.lastPrice,chg:+t.price24hPcnt,qv:+t.turnover24h});}}
+  if(venue==="okx"){for(const t of raw.data||[]){if(!/-USDT$/.test(t.instId))continue;const last=+t.last,o=+t.open24h;out.push({base:t.instId.slice(0,-5),sym:t.instId,last,chg:o>0?last/o-1:0,qv:+t.volCcy24h});}}
+  if(venue==="kucoin"){for(const t of (raw.data&&raw.data.ticker)||[]){if(!/-USDT$/.test(t.symbol))continue;out.push({base:t.symbol.slice(0,-5),sym:t.symbol,last:+t.last,chg:+t.changeRate,qv:+t.volValue});}}
+  return out.filter(x=>x.base&&isFinite(x.qv)&&x.qv>0&&isFinite(x.last)&&x.last>0);
+}
+function parseVenueBook(venue,raw){
+  if(venue==="binance")return raw;
+  if(venue==="bybit")return {bids:(raw.result&&raw.result.b)||[],asks:(raw.result&&raw.result.a)||[]};
+  if(venue==="okx"){const d=(raw.data&&raw.data[0])||{};return {bids:d.bids||[],asks:d.asks||[]};}
+  if(venue==="kucoin"){const d=raw.data||{};return {bids:d.bids||[],asks:d.asks||[]};}
+  return {bids:[],asks:[]};
+}
+// lists: {venue: [ticker...]} -> Map base -> {base, venues:{v:t}, qv, primary}
+function mergeUniverse(lists){
+  const m=new Map();
+  for(const v of VENUES){for(const t of lists[v]||[]){
+    if(t.base==="BTC"||STABLE.has(t.base)||LEVER.test(t.base))continue;
+    let e=m.get(t.base);if(!e){e={base:t.base,venues:{},qv:0};m.set(t.base,e);}
+    if(e.venues[v]&&e.venues[v].qv>=t.qv)continue;
+    if(e.venues[v])e.qv-=e.venues[v].qv;
+    e.venues[v]=t;e.qv+=t.qv;
+  }}
+  for(const e of m.values()){let best=null;for(const v of VENUES){const t=e.venues[v];if(t&&(!best||t.qv>e.venues[best].qv))best=v;}e.primary=best;}
+  return m;
+}
+
+function features(s,e,B){
+  if(e<CFG.minBars-1||e>=s.c.length)return null;
+  const W=CFG.win;const ratios=[];
+  for(let i=e-W+1;i<=e;i++){const bi=B.idx.get(s.t[i]);if(bi==null)continue;ratios.push(s.c[i]/B.c[bi]);}
+  if(ratios.length<W*0.85)return null;
+  const rNow=ratios[ratios.length-1];
+  let lo=Infinity,hi=-Infinity;for(const x of ratios){if(x<lo)lo=x;if(x>hi)hi=x;}
+  const pos=hi>lo?(rNow-lo)/(hi-lo):0.5;
+  const lr=[];for(let i=e-W+1;i<=e;i++)lr.push(Math.log(s.c[i]/s.c[i-1]));
+  const rv120=sd(lr),rv20=sd(lr.slice(-20));
+  const sq=rv120>0?rv20/rv120:null;
+  const recent=mean(s.qv.slice(e-2,e+1)),base=median(s.qv.slice(e-32,e-2));
+  const vr=base>0?recent/base:null;
+  return {pos,sq,vr,ret5:s.c[e]/s.c[e-5]-1,ret30:s.c[e]/s.c[e-30]-1};
+}
+function pumpEvents(s,e,win){
+  const ev=[];const start=Math.max(1,e-win+1);
+  for(let i=start;i<=e;i++){
+    const pre=s.c[i-1];const spike=Math.max(s.c[i],s.h[i])/pre-1;
+    if(spike>=CFG.pumpJump){
+      let back=null;
+      for(let j=i;j<=Math.min(i+CFG.pumpDays,e);j++){if(s.c[j]<=pre*CFG.pumpBack){back=j;break;}}
+      if(back!=null){ev.push({t:s.t[i],i,spike,days:back-i});i=back;}
+    }
+  }
+  return ev;
+}
+function scoreSet(items){
+  const a=pctRank(items.map(x=>x.f?1-x.f.pos:null));
+  const b=pctRank(items.map(x=>x.f&&x.f.sq!=null?-x.f.sq:null));
+  const c=pctRank(items.map(x=>x.f&&x.f.vr>0?Math.log(x.f.vr):null));
+  items.forEach((x,i)=>{
+    if(a[i]==null||b[i]==null||c[i]==null){x.p=null;x.score=null;return;}
+    x.p={low:a[i],sq:b[i],vol:c[i]};x.score=(a[i]+b[i]+c[i])/3*100;
+  });
+  return items;
+}
+function shuffleInPlace(a,rnd){for(let i=a.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));const t=a[i];a[i]=a[j];a[j]=t;}return a}
+function validate(series,B,rnd){
+  rnd=rnd||Math.random;
+  const L=B.t.length-1;const anchors=[];
+  for(let k=0;k<CFG.anchors;k++){
+    const bi=L-CFG.fwd-CFG.step*k;if(bi<0)break;
+    const T=B.t[bi];const items=[];
+    for(const s of series){
+      const e=s.idx.get(T);if(e==null)continue;
+      const fwd=fwdReturn(s,T,CFG.fwd);if(fwd==null||!isFinite(fwd))continue;
+      const f=features(s,e,B);if(!f)continue;
+      items.push({f,fwd});
+    }
+    scoreSet(items);
+    const ok=items.filter(x=>x.score!=null);
+    if(ok.length<20)continue;
+    const fwd=ok.map(x=>x.fwd);
+    const fr=centered(ranks(fwd)),sr=centered(ranks(ok.map(x=>x.score)));
+    let dot=0;for(let i=0;i<ok.length;i++)dot+=fr.c[i]*sr.c[i];
+    const ic=dot/(fr.norm*sr.norm||1);
+    const sorted=[...ok].sort((x,y)=>y.score-x.score);
+    const q=Math.max(1,Math.ceil(ok.length/5));
+    const topEx=mean(sorted.slice(0,q).map(x=>x.fwd))-mean(fwd);
+    anchors.push({T,n:ok.length,ic,topEx,fr,sr,
+      icLow:spearman(ok.map(x=>x.p.low),fwd),icSq:spearman(ok.map(x=>x.p.sq),fwd),icVol:spearman(ok.map(x=>x.p.vol),fwd),univRet:mean(fwd)});
+  }
+  if(anchors.length<CFG.minAnchors)return {ok:false,anchors,reason:`Only ${anchors.length} anchor dates had 20+ scorable coins; ${CFG.minAnchors} are needed.`};
+  const obs=mean(anchors.map(a=>a.ic));
+  const work=anchors.map(a=>a.sr.c.slice());
+  const nulls=new Float64Array(CFG.perms);let ge=0;
+  for(let p=0;p<CFG.perms;p++){
+    let s=0;
+    for(let k=0;k<anchors.length;k++){const v=shuffleInPlace(work[k],rnd),f=anchors[k].fr;let d=0;for(let i=0;i<v.length;i++)d+=v[i]*f.c[i];s+=d/(f.norm*anchors[k].sr.norm||1);}
+    nulls[p]=s/anchors.length;if(nulls[p]>=obs)ge++;
+  }
+  const pval=(ge+1)/(CFG.perms+1);
+  const sorted=Array.from(nulls).sort((a,b)=>a-b);
+  // The permutation test asks "is there any association inside these windows". It treats every coin as
+  // independent, so a regime that happens to favour one kind of coin for a few weeks passes it easily.
+  // The t-test across anchors asks the question that matters: is the IC positive from window to window?
+  const ics=anchors.map(a=>a.ic),icSd=sd(ics),tStat=icSd>0?obs/(icSd/Math.sqrt(ics.length)):0;
+  const tP=tTestP(tStat,ics.length-1),hit=ics.filter(x=>x>0).length,signP=signTestP(hit,ics.length);
+  return {ok:true,anchors,meanIC:obs,pval,null05:sorted[Math.floor(CFG.perms*0.05)],null95:sorted[Math.floor(CFG.perms*0.95)],
+    icSd,tStat,tP,signP,icir:icSd>0?obs/icSd:null,
+    meanTopEx:mean(anchors.map(a=>a.topEx)),hit,pass:obs>=CFG.icPass&&pval<CFG.pPass&&tP<CFG.tPass,
+    comp:{low:mean(anchors.map(a=>a.icLow)),sq:mean(anchors.map(a=>a.icSq)),vol:mean(anchors.map(a=>a.icVol))}};
+}
+function lgamma(x){const c=[76.18009172947146,-86.50532032941677,24.01409824083091,-1.231739572450155,0.1208650973866179e-2,-0.5395239384953e-5];
+  let y=x,t=x+5.5;t-=(x+0.5)*Math.log(t);let ser=1.000000000190015;for(const v of c)ser+=v/++y;return -t+Math.log(2.5066282746310005*ser/x);}
+function betacf(a,b,x){let qab=a+b,qap=a+1,qam=a-1,c=1,d=1-qab*x/qap;if(Math.abs(d)<1e-30)d=1e-30;d=1/d;let h=d;
+  for(let m=1;m<=200;m++){const m2=2*m;let aa=m*(b-m)*x/((qam+m2)*(a+m2));d=1+aa*d;if(Math.abs(d)<1e-30)d=1e-30;c=1+aa/c;if(Math.abs(c)<1e-30)c=1e-30;d=1/d;h*=d*c;
+    aa=-(a+m)*(qab+m)*x/((a+m2)*(qap+m2));d=1+aa*d;if(Math.abs(d)<1e-30)d=1e-30;c=1+aa/c;if(Math.abs(c)<1e-30)c=1e-30;d=1/d;const del=d*c;h*=del;if(Math.abs(del-1)<3e-12)break;}
+  return h;}
+function ibeta(a,b,x){if(x<=0)return 0;if(x>=1)return 1;const bt=Math.exp(lgamma(a+b)-lgamma(a)-lgamma(b)+a*Math.log(x)+b*Math.log(1-x));
+  return x<(a+1)/(a+b+2)?bt*betacf(a,b,x)/a:1-bt*betacf(b,a,1-x)/b;}
+// one-sided P(T >= t) for Student t with df degrees of freedom
+function tTestP(t,df){if(!isFinite(t)||df<1)return 1;const p2=ibeta(df/2,0.5,df/(df+t*t));return t>0?p2/2:1-p2/2;}
+// one-sided P(X >= k) for X ~ Binomial(n, 0.5)
+function signTestP(k,n){let p=0;for(let i=k;i<=n;i++){let c=1;for(let j=0;j<i;j++)c=c*(n-j)/(j+1);p+=c;}return p/Math.pow(2,n);}
+
+function bookStats(d){
+  const bids=(d.bids||[]).map(x=>[+x[0],+x[1]]),asks=(d.asks||[]).map(x=>[+x[0],+x[1]]);
+  if(!bids.length||!asks.length)return null;
+  const bb=bids[0][0],ba=asks[0][0],mid=(bb+ba)/2;
+  let db=0,da=0;
+  for(const [p,q] of bids){if(p<mid*0.98)break;db+=p*q;}
+  for(const [p,q] of asks){if(p>mid*1.02)break;da+=p*q;}
+  const bidFull=bids[bids.length-1][0]<mid*0.98,askFull=asks[asks.length-1][0]>mid*1.02;
+  let left=10000,qty=0;
+  for(const [p,q] of asks){const v=Math.min(left,p*q);qty+=v/p;left-=v;if(left<=1e-9)break;}
+  const slip=left>1e-9?null:((10000/qty)/ba-1);
+  return {spread:(ba-bb)/mid,depthBid:db,depthAsk:da,bidFull,askFull,slip,mid};
+}
+function aggBooks(books){ // {venue: stats|null}
+  const ok=Object.entries(books).filter(([,b])=>b);
+  if(!ok.length)return null;
+  const depth=ok.reduce((s,[,b])=>s+b.depthBid+b.depthAsk,0);
+  const slips=ok.map(([v,b])=>[v,b.slip]).filter(x=>x[1]!=null).sort((a,b)=>a[1]-b[1]);
+  return {depth,bestSlip:slips.length?slips[0][1]:null,bestVenue:slips.length?slips[0][0]:null,n:ok.length};
+}
+
+/* ---- correlation with BTC on aligned days ---- */
+function alignBtc(s,B,n){
+  const off=Math.max(1,s.c.length-n),rows=[];
+  for(let i=off;i<s.c.length;i++){const bi=B.idx.get(s.t[i]),bp=B.idx.get(s.t[i-1]);
+    rows.push({i,t:s.t[i],c:s.c[i],ratio:bi!=null?s.c[i]/B.c[bi]:null,
+      rc:Math.log(s.c[i]/s.c[i-1]),rb:(bi!=null&&bp!=null)?Math.log(B.c[bi]/B.c[bp]):null});}
+  return rows;
+}
+function rollingCorr(rows,win){
+  return rows.map((r,k)=>{
+    if(k<win-1)return null;
+    const a=[],b=[];for(let j=k-win+1;j<=k;j++){if(rows[j].rb!=null&&isFinite(rows[j].rc)){a.push(rows[j].rc);b.push(rows[j].rb);}}
+    return a.length>=win*0.8?corr(a,b):null;
+  });
+}
+function betaStats(rows,win){
+  const seg=rows.slice(-win).filter(r=>r.rb!=null&&isFinite(r.rc));
+  if(seg.length<win*0.8)return {corr:null,beta:null};
+  const a=seg.map(r=>r.rc),b=seg.map(r=>r.rb);
+  const mb=mean(b),ma=mean(a);let cov=0,vb=0;for(let i=0;i<a.length;i++){cov+=(a[i]-ma)*(b[i]-mb);vb+=(b[i]-mb)**2;}
+  return {corr:corr(a,b),beta:vb>0?cov/vb:null};
+}
+
+/* ---- fundamentals parsers (unchanged from v2) ---- */
+function parseGh(url){
+  const m=String(url||"").match(/github\.com\/([^\/\s#?]+)(?:\/([^\/\s#?]+))?/i);
+  if(!m)return null;const owner=m[1],repo=m[2]?m[2].replace(/\.git$/,""):null;
+  if(!owner||/^(orgs|topics|features|about)$/i.test(owner))return null;
+  return {owner,repo};
+}
+function devStats(weekLists){
+  const byWeek=new Map();
+  for(const list of weekLists){if(!Array.isArray(list))continue;for(const w of list){byWeek.set(w.week,(byWeek.get(w.week)||0)+(+w.total||0));}}
+  const weeks=[...byWeek.entries()].sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
+  if(weeks.length<16)return null;
+  const last4=weeks.slice(-4).reduce((a,b)=>a+b,0),prev12=weeks.slice(-16,-4).reduce((a,b)=>a+b,0);
+  const pace=prev12/12,ratio=pace>0?(last4/4)/pace:(last4>0?Infinity:null);
+  return {weeks:weeks.slice(-52),last4,prev12,ratio,total52:weeks.slice(-52).reduce((a,b)=>a+b,0),
+    surge:last4>=20&&ratio!=null&&ratio>=1.5,dormant:weeks.slice(-12).every(x=>x===0)};
+}
+const CATALYST_RX=[["mainnet",/\bmain ?net\b/i],["upgrade",/\b(upgrade|hard ?fork|network update)\b/i],["listing",/\b(lists?|listing|listed)\b/i],
+  ["partnership",/\bpartner(s|ship|ed)?\b/i],["ETF",/\betfs?\b/i],["burn",/\b(burn|buyback)s?\b/i],["airdrop",/\bairdrops?\b/i],["unlock",/\bunlocks?\b/i]];
+function articleTime(a){const v=a.pubDate??a.publishedAt??a.published_at??a.date??a.timestamp??a.created_at;if(v==null)return NaN;if(typeof v==="number")return v<1e12?v*1000:v;return Date.parse(v);}
+function findArray(o){
+  if(Array.isArray(o))return o;
+  if(o&&typeof o==="object"){for(const k of ["articles","results","data","items","news","hits"]){if(Array.isArray(o[k]))return o[k];if(o[k]&&typeof o[k]==="object"){const r=findArray(o[k]);if(r)return r;}}}
+  return null;
+}
+// Name matches as written (headlines are title case), ticker only in capitals or as $ticker.
+// A case-insensitive ticker match turned "one", "near", "sign", "story" headlines into fake coverage.
+function matchesCoin(title,name,symbol){
+  const esc=s=>String(s).replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+  if(name&&name.length>=3&&new RegExp(`(^|[^A-Za-z0-9])${esc(name)}([^A-Za-z0-9]|$)`).test(title))return true;
+  if(symbol&&symbol.length>=2&&new RegExp(`(^|[^A-Za-z0-9$])\\$?${esc(symbol.toUpperCase())}([^A-Za-z0-9]|$)`).test(title))return true;
+  return false;
+}
+function newsStats(raw,name,symbol,now){
+  const arr=findArray(raw)||[];
+  const items=arr.map(a=>({title:String(a.title||a.headline||""),link:a.link||a.url||"",source:typeof a.source==="string"?a.source:(a.source&&a.source.name)||a.source_name||"",t:articleTime(a)}))
+    .filter(a=>a.title&&isFinite(a.t)&&matchesCoin(a.title,name,symbol)).sort((a,b)=>b.t-a.t);
+  const age=a=>(now-a.t)/DAY;
+  const c7=items.filter(a=>age(a)<=7).length,prior=items.filter(a=>age(a)>7&&age(a)<=28).length;
+  const base=prior/3,ratio=base>0?c7/base:(c7>0?Infinity:null);
+  const cats=new Map();
+  for(const a of items){if(age(a)>21)continue;for(const [k,re] of CATALYST_RX){if(re.test(a.title)&&!cats.has(k))cats.set(k,a);}}
+  return {items,c7,prior,ratio,spike:c7>=3&&ratio!=null&&ratio>=2,catalysts:[...cats.entries()].map(([k,a])=>({kind:k,a}))};
+}
+function parseUnlocks(meta,circ,now){
+  const d=meta&&(meta.data||meta);
+  const rs=d&&(d.release_schedule||d.releaseSchedule||d.vesting_schedule);
+  if(!Array.isArray(rs))return {has:false};
+  const ev=[];
+  for(const e of rs){
+    let t,amt;
+    if(Array.isArray(e)){t=e[0];amt=e[1];}
+    else{t=e.unlock_date??e.date??e.timestamp??e.time;amt=e.tokens_to_unlock??e.amount??e.tokens??e.value;}
+    t=typeof t==="string"?Date.parse(t):+t;if(t&&t<1e12)t*=1000;
+    amt=+amt;if(!isFinite(t)||!isFinite(amt)||amt<=0)continue;
+    ev.push({t,amt});
+  }
+  const up=ev.filter(e=>e.t>=now-DAY).sort((a,b)=>a.t-b.t);
+  const in30=up.filter(e=>e.t<=now+30*DAY).reduce((s,e)=>s+e.amt,0),in90=up.filter(e=>e.t<=now+90*DAY).reduce((s,e)=>s+e.amt,0);
+  const pct30=circ>0?in30/circ:null,pct90=circ>0?in90/circ:null;
+  return {has:true,next:up[0]||null,in30,in90,pct30,pct90,count:up.length,risk:pct30!=null&&pct30>=0.01,clear90:ev.length>0&&in90===0};
+}
+/* ---- asset class: catch stablecoins and tokenized stocks that slip past the name lists ---- */
+// Stable: daily moves under 0.4% for 120 days and price within 3% of 1.
+// Equity-like: weekend moves under 35% the size of weekday moves (the underlying market is shut).
+function assetClass(s){
+  const n=s.c.length,k=Math.min(120,n-1);if(k<20)return {cls:"crypto"};
+  const lr=[],wk=[],we=[];
+  for(let i=n-k;i<n;i++){const r=Math.log(s.c[i]/s.c[i-1]);lr.push(r);const d=new Date(s.t[i]).getUTCDay();(d===0||d===6?we:wk).push(Math.abs(r));}
+  const vol=sd(lr),med=median(s.c.slice(-30));
+  if(vol<0.004&&Math.abs(med-1)<0.03)return {cls:"stable",vol};
+  const ratio=we.length>=12&&mean(wk)>0?mean(we)/mean(wk):null;
+  if(ratio!=null&&ratio<0.35)return {cls:"equity",ratio};
+  return {cls:"crypto",ratio};
+}
+/* ---- forward test: scores saved on scan days, judged later against realised returns ---- */
+function forwardEval(snaps,seriesMap,fwd,minN){
+  const sorted=[...snaps].sort((a,b)=>a.T-b.T),done=[];let pending=0;
+  for(const sn of sorted){
+    const pairs=[];let missing=0;
+    for(const [base,sc] of Object.entries(sn.sc)){const s=seriesMap.get(base);const r=s?fwdReturn(s,sn.T,fwd):null;
+      if(r==null||!isFinite(r)){missing++;continue;}pairs.push([sc,r]);}
+    if(!pairs.length&&missing){pending++;continue;}
+    if(pairs.length<(minN||20)){pending++;continue;}
+    done.push({T:sn.T,n:pairs.length,missing,ic:spearman(pairs.map(x=>x[0]),pairs.map(x=>x[1])),univRet:mean(pairs.map(x=>x[1]))});
+  }
+  // non-overlapping subset, oldest first, so windows don't share returns
+  const indep=[];for(const d of done){if(!indep.length||d.T-indep[indep.length-1].T>=fwd*DAY)indep.push(d);}
+  const ics=indep.map(d=>d.ic),m=mean(ics),sdv=ics.length>1?sd(ics):NaN;
+  const t=sdv>0?m/(sdv/Math.sqrt(ics.length)):NaN;
+  return {all:done,indep,pending,meanIC:m,tP:ics.length>1?tTestP(t,ics.length-1):1,hit:ics.filter(x=>x>0).length};
+}
+// ==CORE END==
+
+/* ================= state ================= */
+const S={series:new Map(),btc:null,rows:[],uni:new Map(),gecko:new Map(),books:new Map(),
+  val:null,excluded:[],scanning:false,sort:"score",hideFlag:false,offBn:false,showN:30,trace:[],err:null,cosmos:null,
+  chartTab:"candles",range:60,venueOk:{}};
+const $=id=>document.getElementById(id);
+
+const SRC={
+  binance:{name:"Binance spot",feeds:"Tickers, daily candles, order book",auth:"No key",url:"https://developers.binance.com/docs/binance-spot-api-docs"},
+  bybit:{name:"Bybit spot (v5)",feeds:"Tickers, daily candles, order book",auth:"No key",url:"https://bybit-exchange.github.io/docs/v5/market/kline"},
+  okx:{name:"OKX spot (v5)",feeds:"Tickers, daily candles, order book",auth:"No key",url:"https://www.okx.com/docs-v5/en/"},
+  kucoin:{name:"KuCoin spot",feeds:"Tickers, daily candles, order book",auth:"No key",url:"https://www.kucoin.com/docs-new/rest/spot-trading/market-data/get-klines"},
+  gecko:{name:"CoinGecko",feeds:"Supply, market cap, repo and social links per coin",auth:"No key · demo key optional",url:"https://docs.coingecko.com"},
+  github:{name:"GitHub REST API",feeds:"52-week commit activity, latest release",auth:"60 req/h · token 5000/h",url:"https://docs.github.com/en/rest/metrics/statistics"},
+  news:{name:"cryptocurrency.cv",feeds:"News velocity and catalyst headlines",auth:"No key",url:"https://github.com/nirholas/free-crypto-news"},
+  cosmos:{name:"cosmos.directory",feeds:"Bonded tokens and APR for Cosmos chains",auth:"No key",url:"https://cosmos.directory"},
+  solana:{name:"Solana public RPC",feeds:"Active stake vs total supply (SOL only)",auth:"No key",url:"https://solana.com/docs/rpc"},
+  mobula:{name:"Mobula",feeds:"Token unlock schedules",auth:"Free key · 10k credits/mo",url:"https://docs.mobula.io"}
+};
+for(const k in SRC){SRC[k].status="idle";SRC[k].note="Not called yet";}
+function setSrc(k,status,note){SRC[k].status=status;SRC[k].note=note;if(!$("view-src").hidden)renderSrc();}
+
+/* ================= settings ================= */
+const DEF={skip:10,size:150,minVol:2000000,deep:6,excl:true,venues:{binance:true,bybit:true,okx:true,kucoin:true}};
+function loadJSON(k,d){try{const v=JSON.parse(localStorage.getItem(k)||"{}");return Object.assign({},d,v,{venues:Object.assign({},d.venues||{},v.venues||{})})}catch(e){return JSON.parse(JSON.stringify(d))}}
+function saveJSON(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+let SET=loadJSON("seis.set",DEF);
+let KEYS=Object.assign({gh:"",cg:"",mb:"",proxy:""},(()=>{try{return JSON.parse(localStorage.getItem("seis.keys")||"{}")}catch(e){return {}}})());
+function clampInt(v,a,b,d){v=Math.round(+v);return isFinite(v)?Math.min(b,Math.max(a,v)):d}
+$("venuePick").innerHTML=VENUES.map(v=>`<label for="ven-${v}"><input type="checkbox" id="ven-${v}" data-ven="${v}"> ${VNAME[v]}</label>`).join("");
+function syncSetUI(){
+  $("setExcl").checked=SET.excl!==false;$("setSkip").value=SET.skip;$("setSize").value=SET.size;$("setMinVol").value=SET.minVol;$("setDeep").value=SET.deep;
+  VENUES.forEach(v=>$("ven-"+v).checked=!!SET.venues[v]);
+  $("keyGh").value=KEYS.gh;$("keyCg").value=KEYS.cg;$("keyMb").value=KEYS.mb;$("keyProxy").value=KEYS.proxy;
+  const nv=VENUES.filter(v=>SET.venues[v]).length,k=["gh","cg","mb"].filter(x=>KEYS[x]).length;
+  $("setSummary").textContent=`${nv}/4 exchanges · ${SET.size} coins · ≥$${fmtCompact(SET.minVol)} · ${k}/3 keys`;
+  if(!KEYS.mb)setSrc("mobula","key","Add a free key in Settings");
+  VENUES.forEach(v=>{if(!SET.venues[v])setSrc(v,"off","Turned off in Settings");else if(SRC[v].status==="off")setSrc(v,"idle","Not called yet");});
+}
+function readSet(){
+  const venues={};VENUES.forEach(v=>venues[v]=$("ven-"+v).checked);
+  if(!VENUES.some(v=>venues[v]))venues.binance=true;
+  SET={skip:clampInt($("setSkip").value,0,100,DEF.skip),size:clampInt($("setSize").value,30,300,DEF.size),minVol:clampInt($("setMinVol").value,0,1e12,DEF.minVol),deep:clampInt($("setDeep").value,0,25,DEF.deep),excl:$("setExcl").checked,venues};
+  saveJSON("seis.set",SET);syncSetUI();
+}
+["setSkip","setSize","setMinVol","setDeep","setExcl"].forEach(id=>$(id).addEventListener("change",readSet));
+$("venuePick").addEventListener("change",readSet);
+["keyGh","keyCg","keyMb","keyProxy"].forEach(id=>$(id).addEventListener("change",()=>{
+  KEYS={gh:$("keyGh").value.trim(),cg:$("keyCg").value.trim(),mb:$("keyMb").value.trim(),proxy:$("keyProxy").value.trim().replace(/\/+$/,"")};
+  saveJSON("seis.keys",KEYS);syncSetUI();
+  if(KEYS.mb&&SRC.mobula.status==="key")setSrc("mobula","idle","Key added");
+}));
+$("copyWorker").addEventListener("click",async e=>{
+  const t=$("workerCode").textContent;
+  try{await navigator.clipboard.writeText(t);e.target.textContent="Copied";}
+  catch(err){const r=document.createRange();r.selectNodeContents($("workerCode"));const s=getSelection();s.removeAllRanges();s.addRange(r);e.target.textContent="Selected, copy it";}
+});
+
+/* ================= formatting ================= */
+const NF=new Intl.NumberFormat("en-US",{notation:"compact",maximumFractionDigits:1});
+function fmtCompact(x){return x==null||!isFinite(x)?"–":NF.format(x)}
+function fmtPrice(p){if(!isFinite(p))return "–";const d=p>=100?2:p>=1?3:p>=0.01?5:8;return p.toLocaleString("en-US",{maximumFractionDigits:d,minimumFractionDigits:Math.min(d,2)})}
+function fmtPct(x,d=1){if(x==null||!isFinite(x))return "–";return (x>0?"+":"")+(x*100).toLocaleString("en-US",{maximumFractionDigits:d,minimumFractionDigits:d})+"%"}
+function fmtPctU(x,d=0){if(x==null||!isFinite(x))return "–";return (x*100).toLocaleString("en-US",{maximumFractionDigits:d,minimumFractionDigits:d})+"%"}
+function fmtNum(x,d=2){if(x==null||!isFinite(x))return x===Infinity?"∞":"–";return x.toLocaleString("en-US",{maximumFractionDigits:d,minimumFractionDigits:d})}
+function fmtDay(t){return new Date(t).toLocaleDateString("en-US",{day:"numeric",month:"short",timeZone:"UTC"})}
+function daysFrom(t){const d=Math.round((t-Date.now())/DAY);return d===0?"today":d>0?`in ${d}d`:`${-d}d ago`}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+function safeUrl(u){return /^https:\/\//i.test(u||"")?u:"#"}
+
+/* ================= exchange adapters ================= */
+const BINANCE_HOSTS=["https://data-api.binance.vision","https://api.binance.com"];
+let binanceHost=null;
+function limiter(n){let active=0;const q=[];const next=()=>{if(active>=n||!q.length)return;active++;const {fn,res,rej}=q.shift();fn().then(res,rej).finally(()=>{active--;next();});};
+  return fn=>new Promise((res,rej)=>{q.push({fn,res,rej});next();});}
+const LIM={binance:limiter(8),bybit:limiter(6),okx:limiter(4),kucoin:limiter(5)};
+function blockedErr(v){return Object.assign(new Error(`${VNAME[v]} blocked the request from this page (CORS) or is unreachable.`),{blocked:true});}
+async function rawGet(url,v){
+  let r;
+  try{r=await fetch(url,{cache:"no-store"});}
+  catch(e){
+    if(KEYS.proxy&&v!=="binance"){try{r=await fetch(`${KEYS.proxy}?url=${encodeURIComponent(url)}`,{cache:"no-store"});}catch(e2){throw blockedErr(v);}}
+    else throw blockedErr(v);
+  }
+  if(r.status===429||r.status===418)throw Object.assign(new Error(`${VNAME[v]} rate limit reached.`),{rate:true});
+  if(r.status===403&&KEYS.proxy&&v!=="binance"&&!url.startsWith(KEYS.proxy)){
+    try{const r2=await fetch(`${KEYS.proxy}?url=${encodeURIComponent(url)}`,{cache:"no-store"});if(r2.ok)r=r2;}catch(e){}
+  }
+  if(r.status===403)throw new Error(`${VNAME[v]} refused (HTTP 403). It may block your region; a proxy URL in Settings can route around it.`);
+  if(!r.ok)throw new Error(`${VNAME[v]} HTTP ${r.status}`);
+  const j=await r.json();
+  if(v==="bybit"&&j.retCode!==0)throw new Error(`Bybit: ${j.retMsg||j.retCode}`);
+  if(v==="okx"&&j.code!=="0")throw new Error(`OKX: ${j.msg||j.code}`);
+  if(v==="kucoin"&&j.code!=="200000")throw new Error(`KuCoin: ${j.msg||j.code}`);
+  return j;
+}
+async function vget(v,path){
+  return LIM[v](async()=>{
+    if(v==="binance"){
+      const order=binanceHost?[binanceHost,...BINANCE_HOSTS.filter(h=>h!==binanceHost)]:BINANCE_HOSTS;let last;
+      for(const h of order){try{const j=await rawGet(h+path,v);binanceHost=h;return j;}catch(e){last=e;if(e.rate)throw e;}}
+      throw last;
+    }
+    const base={bybit:"https://api.bybit.com",okx:"https://www.okx.com",kucoin:"https://api.kucoin.com"}[v];
+    return rawGet(base+path,v);
+  });
+}
+const AD={
+  tickers:{binance:"/api/v3/ticker/24hr",bybit:"/v5/market/tickers?category=spot",okx:"/api/v5/market/tickers?instType=SPOT",kucoin:"/api/v1/market/allTickers"},
+  async klines(v,sym,now){
+    if(v==="binance")return parseVenueKlines(v,await vget(v,`/api/v3/klines?symbol=${sym}&interval=1d&limit=${CFG.hist}`));
+    if(v==="bybit")return parseVenueKlines(v,await vget(v,`/v5/market/kline?category=spot&symbol=${sym}&interval=D&limit=${CFG.hist}`));
+    if(v==="kucoin"){const end=Math.floor(now/1000),start=end-(CFG.hist+10)*86400;return parseVenueKlines(v,await vget(v,`/api/v1/market/candles?type=1day&symbol=${sym}&startAt=${start}&endAt=${end}`));}
+    if(v==="okx"){ // page backwards with `after` until ~230 bars
+      let out=[],after="";
+      for(let p=0;p<4&&out.length<CFG.hist;p++){
+        const rows=parseVenueKlines(v,await vget(v,`/api/v5/market/candles?instId=${sym}&bar=1Dutc&limit=300${after?`&after=${after}`:""}`));
+        if(!rows.length)break;out=out.concat(rows);after=Math.min(...rows.map(r=>r.t));if(rows.length<100)break;
+      }
+      return out;
+    }
+  },
+  async book(v,sym){
+    const path={binance:`/api/v3/depth?symbol=${sym}&limit=100`,bybit:`/v5/market/orderbook?category=spot&symbol=${sym}&limit=200`,
+      okx:`/api/v5/market/books?instId=${sym}&sz=100`,kucoin:`/api/v1/market/orderbook/level2_100?symbol=${sym}`}[v];
+    return bookStats(parseVenueBook(v,await vget(v,path)));
+  },
+  btc:{binance:"BTCUSDT",bybit:"BTCUSDT",okx:"BTC-USDT",kucoin:"BTC-USDT"}
+};
+async function pool(items,n,fn,onEach){
+  let i=0;const out=new Array(items.length);
+  await Promise.all(Array.from({length:Math.min(n,items.length)},async()=>{
+    while(i<items.length){const k=i++;try{out[k]=await fn(items[k],k);}catch(e){out[k]={error:e};}onEach&&onEach(out[k],k);}
+  }));
+  return out;
+}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+/* ================= fundamentals network (from v2) ================= */
+function cacheGet(k,ttl){try{const v=JSON.parse(localStorage.getItem("seis.c."+k)||"null");if(v&&Date.now()-v.t<ttl)return v.d;}catch(e){}return null}
+function cachePut(k,d){
+  const v=JSON.stringify({t:Date.now(),d});
+  try{localStorage.setItem("seis.c."+k,v);return;}catch(e){}
+  // storage full: drop the oldest half of the cache, then try once more
+  try{const ks=[];for(let i=0;i<localStorage.length;i++){const kk=localStorage.key(i);if(kk&&kk.startsWith("seis.c.")){let t=0;try{t=JSON.parse(localStorage.getItem(kk)).t||0}catch(_){}ks.push([kk,t]);}}
+    ks.sort((a,b)=>a[1]-b[1]).slice(0,Math.ceil(ks.length/2)).forEach(([kk])=>localStorage.removeItem(kk));localStorage.setItem("seis.c."+k,v);}catch(e){}
+}
+let lastGecko=0;
+async function geckoGet(path){
+  const gap=KEYS.cg?2100:6500;const wait=lastGecko+gap-Date.now();if(wait>0)await sleep(wait);lastGecko=Date.now();
+  const sep=path.includes("?")?"&":"?";
+  const r=await fetch("https://api.coingecko.com/api/v3"+path+(KEYS.cg?`${sep}x_cg_demo_api_key=${encodeURIComponent(KEYS.cg)}`:""),{cache:"no-store"});
+  if(r.status===429)throw new Error("CoinGecko rate limit. A free demo key in Settings helps.");
+  if(!r.ok)throw new Error("CoinGecko HTTP "+r.status);
+  return r.json();
+}
+async function loadGeckoMarkets(){
+  const m=new Map();
+  for(let p=1;p<=4;p++){
+    try{const arr=await geckoGet(`/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=${p}`);
+      for(const c of arr){const k=String(c.symbol||"").toUpperCase();const ex=m.get(k);if(!ex||(c.market_cap_rank||1e9)<(ex.market_cap_rank||1e9))m.set(k,c);}
+      if(arr.length<250)break;
+    }catch(e){setSrc("gecko",m.size?"ok":"err",e.message);if(!m.size)return m;break;}
+  }
+  if(m.size)setSrc("gecko","ok",`${m.size} coins mapped`);
+  return m;
+}
+async function geckoDetail(id){
+  const c=cacheGet("gd."+id,12*3600e3);if(c)return c;
+  const d=await geckoGet(`/coins/${encodeURIComponent(id)}?localization=false&tickers=false&market_data=false&community_data=false&developer_data=false&sparkline=false`);
+  const slim={links:d.links||{},platforms:d.platforms||{},name:d.name};cachePut("gd."+id,slim);setSrc("gecko","ok","Coin detail fetched");return slim;
+}
+let ghRemaining=null;
+async function ghGet(path){
+  const h={Accept:"application/vnd.github+json"};if(KEYS.gh)h.Authorization="Bearer "+KEYS.gh;
+  const r=await fetch("https://api.github.com"+path,{headers:h,cache:"no-store"});
+  const rem=r.headers.get("x-ratelimit-remaining");if(rem!=null)ghRemaining=+rem;
+  if((r.status===403||r.status===429)&&ghRemaining===0){setSrc("github","err","Hourly limit reached");throw new Error(KEYS.gh?"GitHub hourly limit reached.":"GitHub allows 60 requests/hour without a token. Add a free token in Settings.");}
+  if(r.status===202)return {pending:true};
+  if(r.status===204)return [];
+  if(!r.ok)throw new Error("GitHub HTTP "+r.status);
+  return r.json();
+}
+async function devFor(links){
+  const urls=((links.repos_url&&links.repos_url.github)||[]).map(parseGh).filter(Boolean);
+  if(!urls.length)return {none:true};
+  const ck="gh."+urls.map(u=>u.owner+"/"+(u.repo||"")).slice(0,3).join(",");
+  const cached=cacheGet(ck,6*3600e3);if(cached)return cached;
+  let repos=urls.filter(u=>u.repo).slice(0,2).map(u=>u.owner+"/"+u.repo);
+  if(!repos.length){const org=urls[0].owner;let list;
+    try{list=await ghGet(`/orgs/${org}/repos?sort=pushed&per_page=6`);}catch(e){list=await ghGet(`/users/${org}/repos?sort=pushed&per_page=6`);}
+    repos=(Array.isArray(list)?list:[]).filter(x=>!x.fork&&!x.archived).slice(0,2).map(x=>x.full_name);}
+  if(!repos.length)return {none:true};
+  const lists=[];let pending=false;
+  for(const full of repos){let a=await ghGet(`/repos/${full}/stats/commit_activity`);
+    if(a&&a.pending){await sleep(2500);a=await ghGet(`/repos/${full}/stats/commit_activity`);}
+    if(a&&a.pending){pending=true;continue;}lists.push(a);}
+  let release=null;
+  try{const rel=await ghGet(`/repos/${repos[0]}/releases?per_page=3`);
+    if(Array.isArray(rel)&&rel.length){const x=rel.find(r=>!r.draft)||rel[0];release={tag:x.tag_name,name:x.name,t:Date.parse(x.published_at||x.created_at)};}}catch(e){}
+  const stats=devStats(lists);const out={repos,stats,release,pending:pending&&!stats};
+  setSrc("github","ok",`Last call ok${ghRemaining!=null?` · ${ghRemaining} left this hour`:""}`);
+  if(stats)cachePut(ck,out);return out;
+}
+async function newsFor(name,symbol){
+  const ck="nw."+symbol;let raw=cacheGet(ck,2*3600e3);
+  if(!raw){const r=await fetch(`https://cryptocurrency.cv/api/search?q=${encodeURIComponent(name)}&limit=100`,{cache:"no-store"});
+    if(!r.ok)throw new Error("News HTTP "+r.status);raw=await r.json();
+    const arr=findArray(raw);if(arr)cachePut(ck,{articles:arr.slice(0,100).map(a=>({title:a.title||a.headline,link:a.link||a.url,source:typeof a.source==="string"?a.source:(a.source&&a.source.name)||"",pubDate:a.pubDate??a.publishedAt??a.published_at??a.date??a.timestamp}))});}
+  setSrc("news","ok","Search ok");return newsStats(raw,name,symbol,Date.now());
+}
+async function cosmosList(){
+  if(S.cosmos)return S.cosmos;const c=cacheGet("cosmos.list",24*3600e3);if(c){S.cosmos=c;return c;}
+  const r=await fetch("https://chains.cosmos.directory/",{cache:"no-store"});if(!r.ok)throw new Error("cosmos.directory HTTP "+r.status);
+  const j=await r.json();const m={};
+  for(const ch of (j.chains||[])){if(ch.coingecko_id&&ch.params&&ch.params.bonded_tokens&&ch.network_type!=="testnet")m[ch.coingecko_id]={name:ch.name||ch.chain_name,denom:ch.denom,decimals:ch.decimals??6,bonded:ch.params.bonded_tokens,apr:ch.params.calculated_apr??ch.params.estimated_apr};}
+  S.cosmos=m;cachePut("cosmos.list",m);setSrc("cosmos","ok",`${Object.keys(m).length} chains`);return m;
+}
+async function stakingFor(g){
+  if(g.id==="solana"){
+    const rpc=async(method)=>{const r=await fetch("https://api.mainnet-beta.solana.com",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method,params:method==="getSupply"?[{excludeNonCirculatingAccountsList:true}]:[]})});if(!r.ok)throw new Error("Solana RPC HTTP "+r.status);const j=await r.json();if(j.error)throw new Error(j.error.message);return j.result;};
+    const va=await rpc("getVoteAccounts"),sup=await rpc("getSupply");
+    const staked=[...va.current,...va.delinquent].reduce((s,v)=>s+(+v.activatedStake||0),0);
+    setSrc("solana","ok","Vote accounts read");return {chain:"Solana",ratio:staked/sup.value.total,staked:staked/1e9,apr:null,basis:"total supply"};
+  }
+  const m=await cosmosList();const ch=m[g.id];if(!ch)return {none:true};
+  const bonded=+ch.bonded/Math.pow(10,ch.decimals);let supply=null,basis="total supply (chain)";
+  try{const r=await fetch(`https://rest.cosmos.directory/${ch.name}/cosmos/bank/v1beta1/supply/by_denom?denom=${encodeURIComponent(ch.denom)}`);
+    if(r.ok){const j=await r.json();supply=+j.amount.amount/Math.pow(10,ch.decimals);}}catch(e){}
+  if(!supply){supply=g.total_supply||g.circulating_supply;basis="CoinGecko supply";}
+  return {chain:ch.name,ratio:supply?bonded/supply:null,staked:bonded,apr:ch.apr,basis};
+}
+const MOBULA_CHAIN={"ethereum":"ethereum","binance-smart-chain":"evm:56","base":"evm:8453","arbitrum-one":"evm:42161","solana":"solana","polygon-pos":"evm:137"};
+async function unlocksFor(g,detail){
+  if(!KEYS.mb)return {nokey:true};
+  const ck="mb."+g.id;let meta=cacheGet(ck,12*3600e3);
+  if(!meta){
+    let q=`asset=${encodeURIComponent(g.name)}&symbol=${encodeURIComponent(String(g.symbol).toUpperCase())}`;
+    for(const [pf,chain] of Object.entries(MOBULA_CHAIN)){const addr=detail.platforms&&detail.platforms[pf];if(addr){q=`asset=${encodeURIComponent(addr)}&blockchain=${chain}`;break;}}
+    const r=await fetch(`https://api.mobula.io/api/1/metadata?${q}`,{headers:{Authorization:KEYS.mb},cache:"no-store"});
+    if(r.status===401||r.status===403){setSrc("mobula","err","Key rejected");throw new Error("Mobula rejected the key.");}
+    if(!r.ok){setSrc("mobula","err","HTTP "+r.status);throw new Error("Mobula HTTP "+r.status);}
+    const j=await r.json();const d=j.data||j;meta={data:{release_schedule:d.release_schedule||d.releaseSchedule||null}};cachePut(ck,meta);
+  }
+  setSrc("mobula","ok","Metadata ok");return parseUnlocks(meta,g.circulating_supply,Date.now());
+}
+
+/* ================= forward-test snapshots ================= */
+function loadSnaps(){try{const a=JSON.parse(localStorage.getItem("seis.snaps")||"[]");return Array.isArray(a)?a:[]}catch(e){return []}}
+function saveSnapshot(){
+  if(!S.btc||!S.rows.length)return;
+  const T=S.btc.t[S.btc.t.length-1];const snaps=loadSnaps();
+  if(snaps.some(x=>x.T===T))return; // one snapshot per closed UTC day; the first scan of the day counts
+  const sc={};for(const r of S.rows)if(r.score!=null)sc[r.base]=Math.round(r.score*10)/10;
+  if(Object.keys(sc).length<20)return;
+  snaps.push({T,v:CFG.ruleVer,at:Date.now(),sc});
+  while(snaps.length>CFG.snapKeep)snaps.shift();
+  try{localStorage.setItem("seis.snaps",JSON.stringify(snaps));}catch(e){}
+}
+function downloadText(name,text,type){
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;
+  document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);
+}
+function csvCell(v){v=v==null?"":String(v);return /[",\n]/.test(v)?`"${v.replace(/"/g,'""')}"`:v}
+function exportCandidates(){
+  const day=S.btc?new Date(S.btc.t[S.btc.t.length-1]).toISOString().slice(0,10):"";
+  const head=["date","rank","symbol","primary_venue","venues","price","chg24h","vol24h_all","composite","pct_low","pct_squeeze","pct_volume","btc_range_pos","squeeze_ratio","volume_ratio","ret5","ret30","risk_flagged","flags"];
+  const lines=[head.join(",")];
+  sortedRows().forEach((r,i)=>lines.push([day,i+1,r.base,r.u.primary,VENUES.filter(v=>r.u.venues[v]).join("|"),r.price,r.chg,Math.round(r.qv),r.score.toFixed(2),
+    r.p.low.toFixed(4),r.p.sq.toFixed(4),r.p.vol.toFixed(4),r.f.pos.toFixed(4),r.f.sq.toFixed(4),r.f.vr.toFixed(4),r.f.ret5.toFixed(4),r.f.ret30.toFixed(4),
+    r.flagged?1:0,r.flags.map(f=>f.t).join("; ")].map(csvCell).join(",")));
+  downloadText(`seismograph_${day}.csv`,lines.join("\n"),"text/csv");
+}
+function exportValidation(){
+  const v=S.val;if(!v||!v.ok)return;
+  const lines=["anchor_date,n,ic,ic_low,ic_squeeze,ic_volume,top20_excess,universe_mean"];
+  v.anchors.forEach(a=>lines.push([new Date(a.T).toISOString().slice(0,10),a.n,a.ic,a.icLow,a.icSq,a.icVol,a.topEx,a.univRet].map(x=>typeof x==="number"?+x.toFixed(5):x).join(",")));
+  lines.push("",`rule,${CFG.ruleVer}`,`mean_ic,${v.meanIC}`,`perm_p,${v.pval}`,`t_stat,${v.tStat}`,`t_p,${v.tP}`,`sign_p,${v.signP}`,`pass,${v.pass}`);
+  downloadText("seismograph_validation.csv",lines.join("\n"),"text/csv");
+}
+
+/* ================= trace strip ================= */
+const cv=$("traceCv"),ctx=cv.getContext("2d");let traceAnim=0;
+function cssVar(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
+function drawTrace(){
+  const dpr=Math.min(2,window.devicePixelRatio||1),w=cv.clientWidth,h=cv.clientHeight;
+  if(cv.width!==Math.round(w*dpr)){cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);}
+  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
+  const mid=h*0.6,amp=h*0.42;
+  ctx.strokeStyle=cssVar("--grid");ctx.lineWidth=1;for(let x=0;x<w;x+=24){ctx.beginPath();ctx.moveTo(x+.5,0);ctx.lineTo(x+.5,h);ctx.stroke();}
+  ctx.strokeStyle=cssVar("--line");ctx.beginPath();ctx.moveTo(0,mid+.5);ctx.lineTo(w,mid+.5);ctx.stroke();
+  const pts=S.trace,step=Math.min(10,Math.max(2.5,(w-24)/Math.max(pts.length,40)));
+  ctx.strokeStyle=cssVar("--pen");ctx.lineWidth=1.6;ctx.lineJoin="round";ctx.beginPath();ctx.moveTo(0,mid);
+  let x=8;
+  for(let i=0;i<pts.length;i++){const v=Math.max(-1.5,Math.min(2.5,pts[i]))/2.5,sgn=i%2?-1:1;
+    ctx.lineTo(x,mid);ctx.lineTo(x+step*0.35,mid-sgn*v*amp);ctx.lineTo(x+step*0.7,mid+sgn*v*amp*0.45);ctx.lineTo(x+step,mid);x+=step;if(x>w-8)break;}
+  if(S.scanning){const t=performance.now()/120;ctx.lineTo(x+6,mid+Math.sin(t)*2);}
+  ctx.lineTo(w,mid);ctx.stroke();
+  if(pts.length){ctx.fillStyle=cssVar("--pen");ctx.beginPath();ctx.arc(Math.min(x,w-8),mid,3,0,Math.PI*2);ctx.fill();}
+  if(S.scanning)traceAnim=requestAnimationFrame(drawTrace);
+}
+window.addEventListener("resize",()=>{if(!S.scanning)drawTrace();if(openSym)redrawScope();});
+
+/* ================= scan ================= */
+const $btn=$("scanBtn"),$lbl=$("traceLbl");
+function setStatus(t){$("status").textContent=t}
+let deepChain=Promise.resolve(),scanGen=0;
+async function scan(){
+  if(S.scanning)return;
+  const gen=++scanGen,now=Date.now();
+  S.scanning=true;S.err=null;S.excluded=[];S.trace=[];S.series=new Map();S.books=new Map();S.val=null;S.showN=30;S.rows=[];S.venueOk={};
+  $btn.disabled=true;cancelAnimationFrame(traceAnim);drawTrace();renderList();renderVal();renderSummary();
+  try{
+    const active=VENUES.filter(v=>SET.venues[v]);
+    setStatus("tickers from "+active.length+" exchanges");$lbl.innerHTML="Volume anomaly trace · <b>merging exchanges</b>";
+    const geckoP=loadGeckoMarkets().catch(()=>new Map());
+    const lists={};
+    await Promise.all(active.map(async v=>{
+      try{lists[v]=parseVenueTickers(v,await vget(v,AD.tickers[v]));S.venueOk[v]=true;setSrc(v,"ok",`${lists[v].length} USDT pairs`);}
+      catch(e){S.venueOk[v]=false;setSrc(v,"err",e.message);}
+    }));
+    const okV=active.filter(v=>S.venueOk[v]);
+    if(!okV.length)throw new Error("No exchange answered. Check your connection, or open the file in Chrome or Safari.");
+    const merged=mergeUniverse(lists);
+    const all=[...merged.values()].filter(e=>e.qv>=SET.minVol).sort((a,b)=>b.qv-a.qv);
+    const uni=all.slice(SET.skip,SET.skip+SET.size);
+    if(uni.length<20)throw new Error(`Only ${uni.length} coins passed the filter. Lower the minimum volume.`);
+    S.uni=new Map(uni.map(e=>[e.base,e]));
+    renderSummary();
+    setStatus("BTC series");
+    let btc=null;
+    for(const v of ["binance",...okV.filter(x=>x!=="binance")]){if(!S.venueOk[v])continue;try{btc=toSeries(await AD.klines(v,AD.btc[v],now),now);if(btc.c.length>150)break;}catch(e){}}
+    if(!btc||btc.c.length<150)throw new Error("Could not load a BTC daily series from any exchange.");
+    S.btc=btc;
+    let done=0,failed=0;
+    await pool(uni,16,async e=>{
+      // primary venue first; fall back to the next-largest venue if it fails or is too short
+      const order=VENUES.filter(v=>e.venues[v]).sort((a,b)=>e.venues[b].qv-e.venues[a].qv);
+      let s=null,used=null;
+      for(const v of order){try{const x=toSeries(await AD.klines(v,e.venues[v].sym,now),now);if(x.c.length>=40){s=x;used=v;break;}}catch(err){}}
+      if(!s)throw new Error("no candles");
+      s.base=e.base;s.venue=used;S.series.set(e.base,s);
+      const k=s.c.length-1;
+      const vr=k>34?mean(s.qv.slice(k-2,k+1))/median(s.qv.slice(k-32,k-2)):1;
+      S.trace.push(Math.log(Math.max(vr,1e-3)));
+    },(res)=>{done++;if(res&&res.error)failed++;setStatus(`candles ${done}/${uni.length}${failed?` · ${failed} failed`:""}`);$lbl.innerHTML=`Volume anomaly trace · <b>${done}/${uni.length}</b>`;});
+    S.excluded=[];
+    for(const [b,ser] of [...S.series]){const ac=assetClass(ser);ser.cls=ac.cls;
+      if(ac.cls!=="crypto"&&SET.excl!==false){S.excluded.push({base:b,cls:ac.cls});S.series.delete(b);}}
+    buildRows();renderSummary();renderList();
+    setStatus("order books");
+    const top=[...S.rows].filter(r=>r.score!=null).sort((a,b)=>b.score-a.score).slice(0,25);
+    await pool(top,6,async r=>{await loadBooks(r);applyFlags(r);});
+    renderList();
+    setStatus("backtest");$lbl.innerHTML="Volume anomaly trace · <b>backtest</b>";
+    await sleep(30);
+    S.val=validate([...S.series.values()],S.btc);
+    renderSummary();renderVal();
+    setStatus("supply data");
+    S.gecko=await geckoP;S.rows.forEach(applyFlags);renderList();
+    saveSnapshot();renderVal();
+    setStatus(`${S.rows.length} coins${failed?` (${failed} without candles)`:""} · ${new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"})}`);
+    $lbl.innerHTML=`Volume anomaly trace · <b>${S.series.size} coins</b>`;
+    if(S.gecko.size&&SET.deep>0)sortedRows().slice(0,SET.deep).forEach(r=>queueDeep(r,gen));
+  }catch(e){
+    S.err=e;setStatus("error");$lbl.innerHTML="Volume anomaly trace · <b>no connection</b>";renderList();renderSummary();
+  }finally{S.scanning=false;$btn.disabled=false;cancelAnimationFrame(traceAnim);drawTrace();}
+}
+async function loadBooks(r){
+  const e=S.uni.get(r.base)||r.u;const out={};
+  await Promise.all(Object.keys(e.venues).filter(v=>S.venueOk[v]).map(async v=>{try{out[v]=await AD.book(v,e.venues[v].sym);}catch(err){out[v]=null;}}));
+  S.books.set(r.base,out);return out;
+}
+function buildRows(){
+  const items=[];
+  for(const s of S.series.values()){
+    const e=s.c.length-1,f=features(s,e,S.btc),u=S.uni.get(s.base),pt=u.venues[u.primary];
+    items.push({base:s.base,s,f,u,price:pt.last,chg:pt.chg,qv:u.qv,bars:s.c.length,events:pumpEvents(s,e,CFG.pumpWin),deep:null});
+  }
+  scoreSet(items);items.forEach(applyFlags);S.rows=items;
+}
+function applyFlags(r){
+  const fl=[];
+  if(r.events.length)fl.push({k:"risk",t:`pump-dump ×${r.events.length}`});
+  const bk=S.books.get(r.base);const ag=bk&&aggBooks(bk);
+  if(ag&&(ag.depth<20000||ag.bestSlip==null||ag.bestSlip>0.01))fl.push({k:"risk",t:"thin book"});
+  const g=S.gecko.get(r.base);
+  if(g&&g.total_supply>0&&g.circulating_supply>0&&g.circulating_supply/g.total_supply<0.5)fl.push({k:"warn",t:`${Math.round(g.circulating_supply/g.total_supply*100)}% circulating`});
+  if(r.bars<CFG.pumpWin)fl.push({k:"warn",t:`${r.bars}d history`});
+  if(r.f&&r.f.vr>=2&&Math.abs(r.f.ret5)<0.05)fl.push({k:"good",t:"quiet volume"});
+  const d=r.deep;
+  if(d&&d.busy)fl.push({k:"busy",t:"deep scan…"});
+  if(d&&d.done&&!d.nomatch){
+    const dv=d.dev&&d.dev.ok&&d.dev.v.stats;
+    if(dv&&dv.surge)fl.push({k:"pen",t:`dev ×${fmtNum(dv.ratio,1)}`});
+    if(dv&&dv.dormant)fl.push({k:"risk",t:"dev dormant"});
+    const rel=d.dev&&d.dev.ok&&d.dev.v.release;
+    if(rel&&Date.now()-rel.t<21*DAY)fl.push({k:"pen",t:`release ${String(rel.tag||"").slice(0,12)}`});
+    const nw=d.news&&d.news.ok&&d.news.v;
+    if(nw&&nw.spike)fl.push({k:"pen",t:`news ×${fmtNum(nw.ratio,1)}`});
+    if(nw)for(const c of nw.catalysts.slice(0,2))fl.push({k:c.kind==="unlock"?"warn":"pen",t:c.kind});
+    const st=d.stake&&d.stake.ok&&d.stake.v;
+    if(st&&st.ratio!=null)fl.push({k:"",t:`staked ${fmtPctU(st.ratio)}`});
+    const un=d.unlock&&d.unlock.ok&&d.unlock.v;
+    if(un&&un.risk&&un.next)fl.push({k:"risk",t:`unlock ${daysFrom(un.next.t)}`});else if(un&&un.clear90)fl.push({k:"good",t:"no unlock 90d"});
+  }
+  r.flags=fl;r.flagged=fl.some(x=>x.k==="risk");
+}
+
+/* ================= deep scan ================= */
+function queueDeep(r,gen){deepChain=deepChain.then(async()=>{if(gen!==undefined&&gen!==scanGen)return;await deep(r);}).catch(()=>{});}
+async function settle(p){try{return {ok:true,v:await p};}catch(e){return {ok:false,err:String(e.message||e)};}}
+async function deep(r,force){
+  if(r.deep&&(r.deep.busy||(r.deep.done&&!force)))return;
+  const g=S.gecko.get(r.base);
+  if(!g){r.deep={done:true,nomatch:true};applyFlags(r);refreshRow(r);return;}
+  r.deep={busy:true};applyFlags(r);refreshRow(r);
+  const det=await settle(geckoDetail(g.id));let dev,news,stake,unlock;
+  if(det.ok){
+    [dev,news,stake,unlock]=await Promise.all([settle(devFor(det.v.links)),settle(newsFor(g.name||r.base,r.base)),settle(stakingFor(g)),settle(unlocksFor(g,det.v))]);
+    if(!dev.ok)setSrc("github","err",dev.err);if(!news.ok)setSrc("news","err",news.err);if(!stake.ok)setSrc(g.id==="solana"?"solana":"cosmos","err",stake.err);
+  }else setSrc("gecko","err",det.err);
+  r.deep={done:true,det,dev,news,stake,unlock,g};applyFlags(r);refreshRow(r);
+}
+function refreshRow(r){renderList();if(!$("sheet").hidden&&openSym===r.base)drawSheet(r);}
+
+/* ================= list ================= */
+function miniCaps(r){
+  const s=r.s,n=Math.min(40,s.c.length),off=s.c.length-n,W=300,H=34;
+  let lo=Infinity,hi=-Infinity;for(let i=off;i<s.c.length;i++){lo=Math.min(lo,s.l[i]);hi=Math.max(hi,s.h[i]);}
+  if(hi<=lo)hi=lo*1.0001;
+  const y=p=>2+(1-(p-lo)/(hi-lo))*(H-4),step=W/n,bw=Math.max(2,step*0.56);
+  const evI=new Set(r.events.map(e=>e.i));let g="";
+  for(let k=0;k<n;k++){const i=off+k,cx=step*(k+0.5),up=s.c[i]>=s.o[i];
+    const t=y(Math.max(s.o[i],s.c[i])),b=y(Math.min(s.o[i],s.c[i])),bh=Math.max(bw,b-t);
+    g+=`<line x1="${cx.toFixed(1)}" x2="${cx.toFixed(1)}" y1="${y(s.h[i]).toFixed(1)}" y2="${y(s.l[i]).toFixed(1)}" stroke="var(--ink-3)" stroke-width="0.7" vector-effect="non-scaling-stroke" opacity=".6"/>`;
+    g+=up?`<rect x="${(cx-bw/2).toFixed(1)}" y="${t.toFixed(1)}" width="${bw.toFixed(1)}" height="${bh.toFixed(1)}" rx="${(bw/2).toFixed(1)}" fill="var(--pen)"/>`
+         :`<rect x="${(cx-bw/2+0.5).toFixed(1)}" y="${(t+0.5).toFixed(1)}" width="${(bw-1).toFixed(1)}" height="${(bh-1).toFixed(1)}" rx="${(bw/2).toFixed(1)}" fill="var(--surface)" stroke="var(--ink-3)" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
+    if(evI.has(i))g+=`<circle cx="${cx.toFixed(1)}" cy="${(y(s.h[i])-1.5).toFixed(1)}" r="2.2" fill="var(--risk)"/>`;}
+  return `<svg class="mini" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${g}</svg>`;
+}
+function venueTags(u){
+  return `<span class="vn" title="${VENUES.filter(v=>u.venues[v]).map(v=>VNAME[v]+(v===u.primary?" (primary)":"")).join(", ")}">${VENUES.filter(v=>u.venues[v]).map(v=>`<i class="${v===u.primary?"p":""}">${VLETTER[v]}</i>`).join("")}</span>`;
+}
+function triBars(p){const h=x=>Math.round(4+x*18);return `<div class="tri" title="BTC low · squeeze · volume">${[p.low,p.sq,p.vol].map(v=>`<i style="height:${h(v)}px"></i>`).join("")}</div>`}
+function sortedRows(){
+  let rows=S.rows.filter(r=>r.score!=null);
+  if(S.hideFlag)rows=rows.filter(r=>!r.flagged);
+  if(S.offBn)rows=rows.filter(r=>!r.u.venues.binance);
+  const key={score:r=>r.score,vol:r=>r.p.vol,low:r=>r.p.low,sq:r=>r.p.sq}[S.sort];
+  return rows.sort((a,b)=>key(b)-key(a));
+}
+const $list=$("list"),$more=$("moreBtn");
+function renderList(){
+  $("expCsv").disabled=true;
+  if(S.err){$list.innerHTML=`<div class="err"><b>Could not load data.</b> ${esc(S.err.message||S.err)}<br><br>The app calls the exchanges straight from your browser. Open this file in Chrome or Safari; some in-app previews and company networks block these requests.</div>`;$more.hidden=true;return;}
+  if(!S.rows.length){$list.innerHTML=`<div class="empty">${S.scanning?"Pulling daily candles from four exchanges. Each coin adds a stroke to the trace above.":"Tap <b>Scan</b> to start."}</div>`;$more.hidden=true;return;}
+  const rows=sortedRows();
+  const ex=S.excluded||[],exS=ex.filter(x=>x.cls==="stable"),exE=ex.filter(x=>x.cls==="equity");
+  const exNote=ex.length?`<p class="muted" style="font-size:12px;margin:0 0 4px">Left out as non-crypto: ${exS.length?`${exS.length} stable (${exS.map(x=>esc(x.base)).join(", ")})`:""}${exS.length&&exE.length?" · ":""}${exE.length?`${exE.length} equity-like (${exE.map(x=>esc(x.base)).join(", ")})`:""}. Toggle in Settings.</p>`:"";
+  $list.innerHTML=exNote+rows.slice(0,S.showN).map((r,i)=>{
+    const chips=r.flags.map(f=>`<span class="chip ${f.k}">${esc(f.t)}</span>`).join("")+`<span class="chip">vol ×${fmtNum(r.f.vr,1)}</span>`;
+    return `<button class="row" type="button" data-sym="${esc(r.base)}">
+      <span class="rk mono">${i+1}</span>
+      <span class="mid">
+        <span class="symline"><span class="sym">${esc(r.base)}</span>${venueTags(r.u)}<span class="px">$${fmtPrice(r.price)} <span class="chg ${r.chg>=0?"up":"dn"}">${fmtPct(r.chg)}</span></span></span>
+        ${miniCaps(r)}
+        <span class="chips">${chips}</span>
+      </span>
+      <span class="gauge"><span class="n mono">${Math.round(r.score)}</span><span class="cap">composite</span>${triBars(r.p)}</span>
+    </button>`;
+  }).join("")+(rows.length?"":`<div class="empty">No candidates left with these filters.</div>`);
+  $more.hidden=rows.length<=S.showN;
+  $("expCsv").disabled=!rows.length;
+}
+$more.addEventListener("click",()=>{S.showN+=30;renderList()});
+$list.addEventListener("click",e=>{const b=e.target.closest(".row");if(b)openSheet(b.dataset.sym)});
+
+function renderSummary(){
+  $("sumN").textContent=S.rows.length?`${S.rows.filter(r=>r.score!=null).length}/${S.rows.length}`:"–";
+  const act=VENUES.filter(v=>SET.venues[v]);const answered=act.filter(v=>S.venueOk[v]);
+  $("sumX").innerHTML=Object.keys(S.venueOk).length?`${answered.length}/${act.length}<small class="mono">${act.map(v=>`${VLETTER[v]}${S.venueOk[v]?"":"✕"}`).join(" ")}</small>`:"–";
+  const v=$("sumV");
+  if(!S.val){v.textContent=S.scanning?"…":"–";v.className="idle";}
+  else if(!S.val.ok){v.textContent="too short";v.className="idle";}
+  else{v.innerHTML=(S.val.pass?"passed":"failed")+`<small class="mono">IC ${fmtNum(S.val.meanIC,3)} · p ${fmtNum(S.val.pval,2)}</small>`;v.className=S.val.pass?"pass":"fail";}
+}
+
+/* ================= validation tab ================= */
+function verdictText(v){
+  if(v.pass)return `Across ${v.anchors.length} windows the score ranked the next ${CFG.fwd}-day returns better than chance, and it did so from window to window, not in one lucky stretch. Survivorship bias still applies: only coins listed today are tested.`;
+  const why=[];
+  if(v.meanIC<CFG.icPass)why.push(`mean IC ${fmtNum(v.meanIC,3)} is under ${fmtNum(CFG.icPass,2)}`);
+  if(v.pval>=CFG.pPass)why.push(`shuffled scores reach this IC ${Math.round(v.pval*100)}% of the time`);
+  if(v.tP>=CFG.tPass)why.push(`the IC is not steady across windows (t-test p ${fmtNum(v.tP,2)})`);
+  return `Why: ${why.join("; ")}. The list carries no demonstrated signal as it stands.`;
+}
+function forwardCard(){
+  const snaps=loadSnaps();
+  if(!snaps.length)return `<div class="card"><h3>Forward test</h3><p>Each day's first scan saves its scores in this browser. ${CFG.fwd} days later the app checks them against what prices actually did. Nothing here was known when the scores were saved, so this is the clean out-of-sample test. No snapshots yet.</p></div>`;
+  const fe=S.series.size?forwardEval(snaps,S.series,CFG.fwd,20):null;
+  const first=Math.min(...snaps.map(x=>x.T)),need=6;
+  let body;
+  if(!fe){body=`<p>${snaps.length} snapshot${snaps.length>1?"s":""} saved since ${fmtDay(first)}. Run a scan to judge the matured ones.</p>`;}
+  else{
+    const n=fe.indep.length,verdict=n<need?`<span class="chip">collecting ${n}/${need}</span>`:
+      (fe.meanIC>=CFG.icPass&&fe.tP<CFG.tPass?`<span class="chip good">holding up</span>`:`<span class="chip risk">not holding up</span>`);
+    const rows=[...fe.all].reverse().slice(0,12).map(d=>`<tr><td>${fmtDay(d.T)}${fe.indep.includes(d)?"":" <span class='muted'>(overlaps)</span>"}</td><td>${d.n}${d.missing?` <span class="muted">−${d.missing}</span>`:""}</td><td class="${d.ic>=0?"pos":"neg"}">${fmtNum(d.ic,3)}</td><td>${fmtPct(d.univRet)}</td></tr>`).join("");
+    body=`<p>${verdict}</p><dl class="kv"><dt>Snapshots saved</dt><dd>${snaps.length} since ${fmtDay(first)}</dd><dt>Matured, non-overlapping</dt><dd>${n}</dd><dt>Waiting for ${CFG.fwd} days to pass</dt><dd>${fe.pending}</dd>
+      <dt>Mean IC</dt><dd>${n?fmtNum(fe.meanIC,3):"–"}</dd><dt>Windows with IC &gt; 0</dt><dd>${n?`${fe.hit}/${n}`:"–"}</dd><dt>t-test p (one-sided)</dt><dd>${n>1?fmtNum(fe.tP,3):"–"}</dd></dl>
+      ${rows?`<div class="scroll" style="margin-top:8px"><table><thead><tr><th>Saved</th><th>n</th><th>IC</th><th>Universe ${CFG.fwd}d</th></tr></thead><tbody>${rows}</tbody></table></div>`:""}
+      <p class="muted" style="font-size:12px">Same rule as the backtest, judged after ${need} non-overlapping windows. Coins that left today's universe drop out (the −n column), so delisted losers are still missed.</p>`;
+  }
+  return `<div class="card"><h3>Forward test</h3>${body}</div>`;
+}
+function renderVal(){
+  const P=$("valPanel");
+  if(!S.val){P.innerHTML=`<div class="empty">${S.scanning?`After the scan, the score is recomputed at up to ${CFG.anchors} past dates.`:"Run a scan first."}</div>`+forwardCard();return;}
+  const v=S.val;if(!v.ok){P.innerHTML=`<div class="card"><h3>Test did not run</h3><p>${esc(v.reason)}</p></div>`+forwardCard();return;}
+  const maxAbs=Math.max(0.15,...v.anchors.map(a=>Math.abs(a.ic)),Math.abs(v.null05),Math.abs(v.null95));
+  const W=320,H=150,pad={l:36,r:8,t:10,b:24},iw=W-pad.l-pad.r,ih=H-pad.t-pad.b,as=[...v.anchors].reverse(),bw=iw/as.length,y=x=>pad.t+ih/2-(x/maxAbs)*(ih/2);
+  const every=Math.ceil(as.length/6);
+  let svg=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" role="img" aria-label="Information coefficient per anchor date"><rect x="${pad.l}" y="${y(v.null95)}" width="${iw}" height="${Math.max(1,y(v.null05)-y(v.null95))}" fill="var(--pen-soft)"/>`;
+  [maxAbs,0,-maxAbs].forEach(t=>{svg+=`<line x1="${pad.l}" x2="${W-pad.r}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)" stroke-width="${t===0?1.2:.6}"/><text x="${pad.l-6}" y="${y(t)+3}" font-size="9" text-anchor="end" fill="var(--ink-3)">${fmtNum(t,2)}</text>`;});
+  as.forEach((a,i)=>{const x0=pad.l+i*bw+bw*0.22,w=bw*0.56;svg+=`<rect x="${x0}" y="${y(Math.max(0,a.ic))}" width="${w}" height="${Math.max(1,Math.abs(y(a.ic)-y(0)))}" fill="${a.ic>=0?"var(--good)":"var(--risk)"}" rx="1.5"><title>${fmtDay(a.T)}: IC ${fmtNum(a.ic,3)}</title></rect>`+
+    ((as.length-1-i)%every===0?`<text x="${x0+w/2}" y="${H-8}" font-size="9" text-anchor="middle" fill="var(--ink-3)">${fmtDay(a.T)}</text>`:"");});
+  svg+=`<line x1="${pad.l}" x2="${W-pad.r}" y1="${y(v.meanIC)}" y2="${y(v.meanIC)}" stroke="var(--pen)" stroke-dasharray="4 3" stroke-width="1.4"/></svg>`;
+  const rowsT=as.map(a=>`<tr><td>${fmtDay(a.T)}</td><td>${a.n}</td><td class="${a.ic>=0?"pos":"neg"}">${fmtNum(a.ic,3)}</td><td class="${a.topEx>=0?"pos":"neg"}">${fmtPct(a.topEx)}</td><td>${fmtPct(a.univRet)}</td></tr>`).join("");
+  const span=`${fmtDay(v.anchors[v.anchors.length-1].T)} – ${fmtDay(v.anchors[0].T)}`;
+  const mark=(good)=>good?`<span class="pos">✓</span>`:`<span class="neg">✕</span>`;
+  P.innerHTML=`<div class="card"><div class="verdict"><span class="stamp ${v.pass?"pass":"fail"}">${v.pass?"Passed":"Falsified"}</span>
+      <p style="margin:0;flex:1;min-width:180px">${verdictText(v)}</p></div>
+    <dl class="kv" style="margin-top:12px"><dt>Windows (${CFG.fwd}d forward, non-overlapping)</dt><dd>${v.anchors.length} · ${span}</dd>
+      <dt>${mark(v.meanIC>=CFG.icPass)} Mean IC ≥ ${fmtNum(CFG.icPass,2)}</dt><dd>${fmtNum(v.meanIC,3)}</dd>
+      <dt>${mark(v.pval<CFG.pPass)} Permutation p &lt; ${fmtNum(CFG.pPass,2)} (${CFG.perms} shuffles)</dt><dd>${fmtNum(v.pval,3)}</dd>
+      <dt>${mark(v.tP<CFG.tPass)} Across-window t-test p &lt; ${fmtNum(CFG.tPass,2)}</dt><dd>${fmtNum(v.tP,3)} <span class="muted">t ${fmtNum(v.tStat,2)}</span></dd>
+      <dt>IC std across windows · ICIR</dt><dd>${fmtNum(v.icSd,3)} · ${fmtNum(v.icir,2)}</dd>
+      <dt>Windows with IC &gt; 0 · sign test p</dt><dd>${v.hit}/${v.anchors.length} · ${fmtNum(v.signP,3)}</dd>
+      <dt>Null band 5%–95% (permutation)</dt><dd>${fmtNum(v.null05,3)} / ${fmtNum(v.null95,3)}</dd>
+      <dt>Top 20% excess vs universe</dt><dd>${fmtPct(v.meanTopEx)}</dd><dt>Rule</dt><dd>${esc(CFG.ruleVer)}, all three ✓</dd></dl>
+    <button class="btn ghost small" type="button" id="expVal" style="margin-top:10px">Export CSV</button></div>
+  ${forwardCard()}
+  <div class="card"><h3>IC by anchor date</h3>${svg}<div class="scroll" style="margin-top:10px"><table><thead><tr><th>Date</th><th>n</th><th>IC</th><th>Top 20% excess</th><th>Universe mean</th></tr></thead><tbody>${rowsT}</tbody></table></div></div>
+  <div class="card"><h3>Mean IC by component</h3><p>A negative component is a candidate for removal, but that change needs its own pre-registered test in the next window.</p>
+    <dl class="kv"><dt>Near low vs BTC</dt><dd class="${v.comp.low>=0?"pos":"neg"}">${fmtNum(v.comp.low,3)}</dd><dt>Volatility squeeze</dt><dd class="${v.comp.sq>=0?"pos":"neg"}">${fmtNum(v.comp.sq,3)}</dd><dt>Volume anomaly</dt><dd class="${v.comp.vol>=0?"pos":"neg"}">${fmtNum(v.comp.vol,3)}</dd></dl></div>`;
+  const ev=$("expVal");if(ev)ev.addEventListener("click",exportValidation);
+}
+function renderSrc(){
+  $("srcList").innerHTML=Object.values(SRC).map(s=>`<div class="src"><span class="dot ${s.status}"></span><b>${esc(s.name)}</b><span class="st">${esc(s.auth)}</span>
+    <span class="ds">${esc(s.feeds)}. <span class="muted">${esc(s.note)}</span> · <a href="${s.url}" target="_blank" rel="noopener">docs</a></span></div>`).join("");
+}
+
+/* ================= scope charts (canvas) ================= */
+function prepCanvas(c,h){
+  const dpr=Math.min(2.5,window.devicePixelRatio||1),w=c.clientWidth;
+  c.style.height=h+"px";c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);
+  const x=c.getContext("2d");x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,w,h);return {x,w,h};
+}
+function capsule(x,cx,top,bw,bh){
+  const r=Math.min(bw/2,bh/2),l=cx-bw/2;x.beginPath();
+  if(x.roundRect){x.roundRect(l,top,bw,bh,r);return;}
+  x.moveTo(l+r,top);x.arcTo(l+bw,top,l+bw,top+bh,r);x.arcTo(l+bw,top+bh,l,top+bh,r);x.arcTo(l,top+bh,l,top,r);x.arcTo(l,top,l+bw,top,r);x.closePath();
+}
+function spark(x,cx,cy,r,col){x.save();x.strokeStyle=col;x.lineWidth=1.4;x.shadowColor=col;x.shadowBlur=6;x.beginPath();
+  for(let k=0;k<4;k++){const a=k*Math.PI/4;x.moveTo(cx-Math.cos(a)*r,cy-Math.sin(a)*r);x.lineTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r);}x.stroke();x.restore();}
+function scopeGrid(x,L,T,W,H,rows,col){
+  x.save();x.strokeStyle=col;x.lineWidth=1;x.setLineDash([1,4]);
+  for(let k=0;k<=rows;k++){const yy=Math.round(T+k*H/rows)+.5;x.beginPath();x.moveTo(L,yy);x.lineTo(L+W,yy);x.stroke();}
+  x.restore();
+}
+function drawCandles(c,r,hover){
+  const C={phos:cssVar("--phos"),dim:cssVar("--phos-dim"),cyan:cssVar("--cyan"),spark:cssVar("--spark"),txt:cssVar("--scope-text"),bg:cssVar("--scope-bg")};
+  const {x,w,h}=prepCanvas(c,280);
+  const s=r.s,n=Math.min(S.range,s.c.length),off=s.c.length-n;
+  const L=4,R=58,T=10,volH=46,gap=12,B=18,PH=h-T-volH-gap-B,PW=w-L-R;
+  let lo=Infinity,hi=-Infinity;for(let i=off;i<s.c.length;i++){lo=Math.min(lo,s.l[i]);hi=Math.max(hi,s.h[i]);}
+  const pp=(hi-lo)*0.06||hi*0.01;lo-=pp;hi+=pp;
+  const y=p=>T+(1-(p-lo)/(hi-lo))*PH,step=PW/n,bw=Math.max(2,Math.min(14,step*0.58)),X=k=>L+step*(k+0.5);
+  scopeGrid(x,L,T,PW,PH,4,"rgba(255,179,71,.10)");
+  // anomaly window sweep
+  const aw0=L+step*(n-3);const gr=x.createLinearGradient(aw0,0,L+PW,0);gr.addColorStop(0,"rgba(98,212,255,0)");gr.addColorStop(1,"rgba(98,212,255,.16)");
+  x.fillStyle=gr;x.fillRect(aw0,T,L+PW-aw0,PH+gap+volH);
+  // volume waveform, mirrored
+  const yb=T+PH+gap+volH/2;let vmax=0;for(let i=off;i<s.c.length;i++)vmax=Math.max(vmax,s.qv[i]);
+  for(let k=0;k<n;k++){const i=off+k,a=(s.qv[i]/(vmax||1))*(volH/2-1);x.fillStyle=k>=n-3?"rgba(98,212,255,.95)":"rgba(98,212,255,.38)";
+    x.fillRect(X(k)-Math.max(1,bw*0.32),yb-a,Math.max(2,bw*0.64),a*2||1);}
+  x.fillStyle="rgba(98,212,255,.5)";x.fillRect(L,yb-0.5,PW,1);
+  // candles
+  const evI=new Set(r.events.map(e=>e.i));
+  for(let k=0;k<n;k++){
+    const i=off+k,cx=X(k),up=s.c[i]>=s.o[i],t=y(Math.max(s.o[i],s.c[i])),b=y(Math.min(s.o[i],s.c[i])),bh=Math.max(bw*0.9,b-t);
+    const yh=y(s.h[i]),yl=y(s.l[i]);
+    const wg=x.createLinearGradient(0,yh,0,yl);wg.addColorStop(0,"rgba(255,179,71,0)");wg.addColorStop(0.5,up?"rgba(255,179,71,.9)":"rgba(255,179,71,.45)");wg.addColorStop(1,"rgba(255,179,71,0)");
+    x.strokeStyle=wg;x.lineWidth=1;x.beginPath();x.moveTo(cx,yh);x.lineTo(cx,yl);x.stroke();
+    if(up){x.save();x.shadowColor=C.phos;x.shadowBlur=10;x.fillStyle=C.phos;capsule(x,cx,t,bw,bh);x.fill();x.restore();}
+    else{x.fillStyle=C.bg;capsule(x,cx,t,bw,bh);x.fill();x.strokeStyle=C.dim;x.lineWidth=1.2;capsule(x,cx,t+0.6,bw-1.2,bh-1.2);x.stroke();}
+    if(evI.has(i))spark(x,cx,yh-9,4.5,C.spark);
+  }
+  // last price beam
+  const last=s.c[s.c.length-1],yL=y(last);
+  x.save();x.strokeStyle="rgba(255,179,71,.55)";x.setLineDash([3,4]);x.beginPath();x.moveTo(L,yL+.5);x.lineTo(L+PW,yL+.5);x.stroke();x.restore();
+  x.font="500 10px 'IBM Plex Mono',monospace";x.textBaseline="middle";
+  const tag=fmtPrice(last),tw=x.measureText(tag).width+10;
+  x.fillStyle=C.phos;x.beginPath();x.moveTo(L+PW+2,yL);x.lineTo(L+PW+7,yL-8);x.lineTo(L+PW+7+tw,yL-8);x.lineTo(L+PW+7+tw,yL+8);x.lineTo(L+PW+7,yL+8);x.closePath();x.fill();
+  x.fillStyle="#1a1206";x.fillText(tag,L+PW+12,yL+0.5);
+  // axis labels
+  x.fillStyle=C.txt;x.globalAlpha=.75;
+  for(let k=0;k<=4;k++){const p=hi-(hi-lo)*k/4,yy=T+k*PH/4;if(Math.abs(yy-yL)<11)continue;x.fillText(fmtPrice(p),L+PW+8,yy);}
+  x.textBaseline="alphabetic";x.textAlign="left";x.fillText(fmtDay(s.t[off]),L,h-4);x.textAlign="center";x.fillText(fmtDay(s.t[off+Math.floor(n/2)]),L+PW/2,h-4);
+  x.textAlign="right";x.fillText(fmtDay(s.t[s.t.length-1]),L+PW,h-4);x.globalAlpha=1;x.textAlign="left";
+  x.fillStyle="rgba(98,212,255,.7)";x.fillText("VOL",L+2,T+PH+gap+9);
+  // reticle
+  if(hover!=null&&hover>=0&&hover<n){const cx=X(hover),i=off+hover;x.save();x.strokeStyle="rgba(98,212,255,.8)";x.setLineDash([2,3]);
+    x.beginPath();x.moveTo(cx+.5,T);x.lineTo(cx+.5,T+PH+gap+volH);x.stroke();const yc=y(s.c[i]);x.beginPath();x.moveTo(L,yc+.5);x.lineTo(L+PW,yc+.5);x.stroke();
+    x.setLineDash([]);x.fillStyle=C.cyan;x.beginPath();x.arc(cx,yc,3,0,Math.PI*2);x.fill();x.restore();}
+  return {idx:(px)=>{const k=Math.floor((px-L)/step);return k>=0&&k<n?k:null;},read:(k)=>{const i=off+k,m=median(s.qv.slice(Math.max(0,i-30),i))||s.qv[i];
+    return `<b>${fmtDay(s.t[i])}</b> · O ${fmtPrice(s.o[i])} H ${fmtPrice(s.h[i])} L ${fmtPrice(s.l[i])} C ${fmtPrice(s.c[i])}<br>Vol $${fmtCompact(s.qv[i])} (×${fmtNum(s.qv[i]/m,1)} vs 30d median) · day ${fmtPct(s.c[i]/s.o[i]-1)}`;}};
+}
+function drawVsBtc(c,r,hover){
+  const C={phos:cssVar("--phos"),cyan:cssVar("--cyan"),spark:cssVar("--spark"),txt:cssVar("--scope-text")};
+  const {x,w,h}=prepCanvas(c,300);
+  const rows=alignBtc(r.s,S.btc,Math.max(S.range,30)+30).slice(-Math.max(S.range,30));
+  const all=alignBtc(r.s,S.btc,Math.max(S.range,30)+30);const rc=rollingCorr(all,30).slice(-rows.length);
+  const n=rows.length,L=52,R=58,T=10,PH=168,gap=22,CH=h-T-PH-gap-18,PW=w-L-R,step=PW/Math.max(1,n-1),X=k=>L+step*k;
+  const cs=rows.map(q=>q.c),rs=rows.map(q=>q.ratio).filter(v=>v!=null);
+  const lo=Math.min(...cs),hi=Math.max(...cs),rlo=Math.min(...rs),rhi=Math.max(...rs);
+  const yP=p=>T+6+(1-(p-lo)/((hi-lo)||1))*(PH-12),yR=p=>T+6+(1-(p-rlo)/((rhi-rlo)||1))*(PH-12);
+  scopeGrid(x,L,T,PW,PH,4,"rgba(255,179,71,.10)");
+  // ratio line (cyan)
+  x.save();x.strokeStyle=C.cyan;x.lineWidth=1.5;x.globalAlpha=.9;x.beginPath();let st=false;
+  rows.forEach((q,k)=>{if(q.ratio==null)return;const yy=yR(q.ratio);if(!st){x.moveTo(X(k),yy);st=true;}else x.lineTo(X(k),yy);});x.stroke();x.restore();
+  // price line (amber glow)
+  x.save();x.strokeStyle=C.phos;x.lineWidth=2;x.shadowColor=C.phos;x.shadowBlur=8;x.lineJoin="round";x.beginPath();
+  rows.forEach((q,k)=>{const yy=yP(q.c);k?x.lineTo(X(k),yy):x.moveTo(X(k),yy);});x.stroke();x.restore();
+  x.font="500 10px 'IBM Plex Mono',monospace";x.textBaseline="middle";
+  x.fillStyle=C.phos;x.globalAlpha=.8;[hi,(hi+lo)/2,lo].forEach((p,k)=>x.fillText(fmtPrice(p),L+PW+8,T+6+k*(PH-12)/2));
+  x.fillStyle=C.cyan;x.textAlign="right";[rhi,(rhi+rlo)/2,rlo].forEach((p,k)=>x.fillText(p<0.001?p.toExponential(1):p.toPrecision(3),L-6,T+6+k*(PH-12)/2));
+  x.textAlign="left";x.globalAlpha=1;
+  // correlation seismogram
+  const cT=T+PH+gap,cMid=cT+CH/2,yC=v=>cMid-v*(CH/2);
+  x.strokeStyle="rgba(255,255,255,.08)";[1,-1].forEach(v=>{x.beginPath();x.moveTo(L,yC(v)+.5);x.lineTo(L+PW,yC(v)+.5);x.stroke();});
+  x.strokeStyle="rgba(255,255,255,.25)";x.beginPath();x.moveTo(L,cMid+.5);x.lineTo(L+PW,cMid+.5);x.stroke();
+  const bw2=Math.max(1.5,step*0.6);
+  rc.forEach((v,k)=>{if(v==null)return;x.fillStyle=v>=0?"rgba(98,212,255,.85)":"rgba(255,90,122,.85)";const yy=yC(v);x.fillRect(X(k)-bw2/2,Math.min(yy,cMid),bw2,Math.max(1,Math.abs(yy-cMid)));});
+  x.fillStyle="#8c96a3";x.textBaseline="alphabetic";x.fillText("30D CORR WITH BTC",L,cT-6);
+  x.textBaseline="middle";x.textAlign="right";x.fillText("+1",L-6,yC(1));x.fillText("0",L-6,cMid);x.fillText("−1",L-6,yC(-1));x.textAlign="left";
+  x.textBaseline="alphabetic";x.fillStyle=C.txt;x.globalAlpha=.75;x.fillText(fmtDay(rows[0].t),L,h-4);x.textAlign="right";x.fillText(fmtDay(rows[n-1].t),L+PW,h-4);x.textAlign="left";x.globalAlpha=1;
+  if(hover!=null&&hover>=0&&hover<n){const cx=X(hover);x.save();x.strokeStyle="rgba(255,255,255,.55)";x.setLineDash([2,3]);x.beginPath();x.moveTo(cx+.5,T);x.lineTo(cx+.5,cT+CH);x.stroke();x.setLineDash([]);
+    x.fillStyle=C.phos;x.beginPath();x.arc(cx,yP(rows[hover].c),3,0,Math.PI*2);x.fill();if(rows[hover].ratio!=null){x.fillStyle=C.cyan;x.beginPath();x.arc(cx,yR(rows[hover].ratio),3,0,Math.PI*2);x.fill();}x.restore();}
+  return {idx:(px)=>{const k=Math.round((px-L)/step);return k>=0&&k<n?k:null;},read:(k)=>{const q=rows[k];
+    return `<b>${fmtDay(q.t)}</b> · price $${fmtPrice(q.c)} · BTC pair ${q.ratio==null?"–":q.ratio.toPrecision(4)}<br>30d corr ${rc[k]==null?"–":fmtNum(rc[k],2)} · day ${fmtPct(Math.exp(q.rc)-1)}${q.rb!=null?` vs BTC ${fmtPct(Math.exp(q.rb)-1)}`:""}`;}};
+}
+let scopeState=null;
+function redrawScope(hover){
+  const r=S.rows.find(x=>x.base===openSym);const c=$sheetIn.querySelector("#scopeCv");if(!r||!c)return;
+  scopeState=S.chartTab==="btc"?drawVsBtc(c,r,hover):drawCandles(c,r,hover);
+}
+function bindScope(){
+  const c=$sheetIn.querySelector("#scopeCv"),ro=$sheetIn.querySelector("#scopeRead");if(!c)return;
+  const show=ev=>{if(!scopeState)return;const b=c.getBoundingClientRect(),k=scopeState.idx(ev.clientX-b.left);if(k==null)return;redrawScope(k);ro.innerHTML=scopeState.read(k);};
+  c.addEventListener("pointermove",show);c.addEventListener("pointerdown",show);
+}
+function btcStats(r){
+  const rows=alignBtc(r.s,S.btc,130);const b30=betaStats(rows,30),b90=betaStats(rows,90);const f=r.f;
+  return `<dl class="stats"><div><dt>Corr 30d</dt><dd>${fmtNum(b30.corr,2)}</dd></div><div><dt>Corr 90d</dt><dd>${fmtNum(b90.corr,2)}</dd></div>
+    <div><dt>Beta 90d</dt><dd>${fmtNum(b90.beta,2)}</dd></div><div><dt>BTC-pair range</dt><dd>${f?Math.round(f.pos*100)+"%":"–"}</dd></div></dl>`;
+}
+
+/* ================= detail sheet ================= */
+const $sheet=$("sheet"),$sheetIn=$("sheetIn");let openSym=null;
+async function openSheet(base){
+  const r=S.rows.find(x=>x.base===base);if(!r)return;
+  openSym=base;$sheet.hidden=false;document.body.style.overflow="hidden";drawSheet(r);
+  if(!S.books.has(base)){await loadBooks(r);applyFlags(r);if(openSym===base)drawSheet(r);renderList();}
+  if(S.gecko.size&&!r.deep)deep(r);
+}
+function closeSheet(){$sheet.hidden=true;document.body.style.overflow="";openSym=null;scopeState=null}
+$sheet.addEventListener("click",e=>{
+  if(e.target===$sheet||e.target.closest("[data-close]"))return closeSheet();
+  const r=S.rows.find(x=>x.base===openSym);if(!r)return;
+  const t=e.target.closest("[data-stab]");if(t){S.chartTab=t.dataset.stab;drawSheet(r);return;}
+  const g=e.target.closest("[data-range]");if(g){S.range=+g.dataset.range;drawSheet(r);return;}
+  if(e.target.closest("[data-redeep]"))deep(r,true);
+});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$sheet.hidden)closeSheet()});
+
+function frow(name,val,pct,desc){
+  return `<div class="frow"><span class="nm">${name}</span><span class="vl">${val}</span>${pct!=null?`<div class="fbar" style="grid-column:1/-1"><span style="width:${Math.round(pct*100)}%"></span></div>`:""}<span class="ds">${desc}</span></div>`;
+}
+function devStrip(weeks){
+  const W=300,H=34,n=weeks.length,mx=Math.max(1,...weeks),bw=W/n;
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:34px;display:block;margin-top:6px" aria-label="Weekly commits, last ${n} weeks">`+
+    weeks.map((v,i)=>{const h=v?Math.max(1.5,v/mx*(H-2)):0.8;return `<rect x="${(i*bw+0.4).toFixed(1)}" y="${(H-h).toFixed(1)}" width="${(bw-0.8).toFixed(1)}" height="${h.toFixed(1)}" fill="${i>=n-4?"var(--pen)":"var(--line)"}"/>`}).join("")+`</svg>`;
+}
+function fundamentals(r){
+  const d=r.deep;
+  if(!S.gecko.size)return `<p class="muted">CoinGecko list not loaded, so the coin can't be matched to its repos and chain.</p>`;
+  if(!d||d.busy)return `<p class="mono muted">Fetching GitHub, news, staking and unlocks…</p>`;
+  if(d.nomatch)return `<p class="muted">${esc(r.base)} did not match a coin in CoinGecko's top 1000.</p>`;
+  if(!d.det.ok)return `<p class="muted">${esc(d.det.err)}</p><button class="btn ghost small" type="button" data-redeep>Retry</button>`;
+  const blk=(title,src,body)=>`<div class="fblock"><div class="hd"><b>${title}</b><span class="src-l">${src}</span></div>${body}</div>`,errP=x=>`<p class="muted">${esc(x.err)}</p>`;
+  let dev;
+  if(!d.dev.ok)dev=errP(d.dev);else if(d.dev.v.none)dev=`<p class="muted">No GitHub repository listed for this coin.</p>`;
+  else if(d.dev.v.pending)dev=`<p class="muted">GitHub is still computing stats. Refresh in a minute.</p>`;
+  else{const st=d.dev.v.stats,rel=d.dev.v.release;dev=st?`<dl class="kv"><dt>Commits, last 4 weeks</dt><dd>${st.last4}</dd><dt>Pace vs prior 12 weeks</dt><dd>${fmtNum(st.ratio,2)}×</dd><dt>Commits, 52 weeks</dt><dd>${st.total52}</dd>${rel?`<dt>Latest release</dt><dd>${esc(String(rel.tag||rel.name||"").slice(0,18))} · ${daysFrom(rel.t)}</dd>`:""}</dl>${devStrip(st.weeks)}
+      <p class="muted" style="font-size:11.5px">${d.dev.v.repos.map(x=>`<a href="https://github.com/${esc(x)}" target="_blank" rel="noopener">${esc(x)}</a>`).join(" · ")}</p>`:`<p class="muted">Not enough weekly data.</p>`;}
+  let nw;
+  if(!d.news.ok)nw=errP(d.news);else{const v=d.news.v;nw=`<dl class="kv"><dt>Articles, last 7 days</dt><dd>${v.c7}</dd><dt>Weekly average, prior 3 weeks</dt><dd>${fmtNum(v.prior/3,1)}</dd><dt>Velocity</dt><dd>${v.ratio==null?"–":fmtNum(v.ratio,1)+"×"}</dd></dl>`+
+    (v.catalysts.length?`<p><b>Catalyst words in last 21 days:</b> ${v.catalysts.map(c=>esc(c.kind)).join(", ")}</p>`:`<p class="muted">No catalyst keywords in headlines from the last 21 days.</p>`)+
+    (v.items.length?`<ul class="news">${v.items.slice(0,4).map(a=>`<li><a href="${esc(safeUrl(a.link))}" target="_blank" rel="noopener">${esc(a.title)}</a><small>${esc(a.source||"")} · ${daysFrom(a.t)}</small></li>`).join("")}</ul>`:`<p class="muted">No headlines mention ${esc(r.base)}.</p>`);}
+  let st;
+  if(!d.stake.ok)st=errP(d.stake);else if(d.stake.v.none)st=`<p class="muted">No free staking source for this chain. Only Cosmos SDK chains and Solana are covered.</p>`;
+  else{const v=d.stake.v;st=`<dl class="kv"><dt>Staked share</dt><dd>${fmtPctU(v.ratio,1)}</dd><dt>Staked tokens</dt><dd>${fmtCompact(v.staked)}</dd>${v.apr!=null?`<dt>Staking APR</dt><dd>${fmtPctU(v.apr,1)}</dd>`:""}<dt>Basis</dt><dd>${esc(v.basis)}</dd></dl>`;}
+  let un;
+  if(!d.unlock.ok)un=errP(d.unlock);else if(d.unlock.v.nokey)un=`<p class="muted">Add a free Mobula key in Settings to load unlock schedules.</p>`;
+  else if(!d.unlock.v.has)un=`<p class="muted">Mobula has no release schedule for this token.</p>`;
+  else{const v=d.unlock.v;un=`<dl class="kv"><dt>Next unlock</dt><dd>${v.next?`${fmtDay(v.next.t)} · ${daysFrom(v.next.t)}`:"none scheduled"}</dd><dt>Within 30 days</dt><dd>${fmtCompact(v.in30)} (${v.pct30==null?"–":fmtPctU(v.pct30,1)} of circ.)</dd><dt>Within 90 days</dt><dd>${fmtCompact(v.in90)} (${v.pct90==null?"–":fmtPctU(v.pct90,1)} of circ.)</dd></dl>`;}
+  const Lk=d.det.v.links||{};
+  const social=[Lk.twitter_screen_name&&`X: @${esc(Lk.twitter_screen_name)}`,Lk.telegram_channel_identifier&&`Telegram: ${esc(Lk.telegram_channel_identifier)}`,Lk.subreddit_url&&`<a href="${esc(safeUrl(Lk.subreddit_url))}" target="_blank" rel="noopener">Reddit</a>`].filter(Boolean).join(" · ");
+  return `<div class="fund">${blk("Dev activity","GitHub",dev)}${blk("News and catalysts","cryptocurrency.cv",nw+(social?`<p class="muted" style="font-size:12px;margin-top:8px">${social}</p>`:""))}
+    ${blk("Staking",d.stake.ok&&d.stake.v.chain==="Solana"?"Solana RPC":"cosmos.directory",st)}${blk("Unlocks","Mobula",un)}${blk("Exchange reserves","—",`<p class="muted">No free source. See the Sources tab.</p>`)}</div>`;
+}
+function liquidity(r){
+  const bk=S.books.get(r.base),u=r.u;
+  if(bk===undefined)return `<p class="mono muted" style="margin:0">loading order books…</p>`;
+  const vs=VENUES.filter(v=>u.venues[v]);
+  const rows=vs.map(v=>{const b=bk[v],t=u.venues[v];return `<tr><td>${VNAME[v]}${v===u.primary?" ★":""}</td><td>$${fmtCompact(t.qv)}</td><td>${b?((b.bidFull&&b.askFull)?"":"≥")+"$"+fmtCompact(b.depthBid+b.depthAsk):"–"}</td><td>${b?fmtPctU(b.spread,2):"–"}</td><td>${b?(b.slip==null?"thin":fmtPctU(b.slip,2)):"–"}</td></tr>`;}).join("");
+  const ag=aggBooks(bk);
+  return `<div class="scroll"><table><thead><tr><th>Venue</th><th>24h vol</th><th>±2% depth</th><th>Spread</th><th>$10k slip</th></tr></thead><tbody>${rows}
+    <tr class="tot"><td>All</td><td>$${fmtCompact(u.qv)}</td><td>${ag?"$"+fmtCompact(ag.depth):"–"}</td><td></td><td>${ag&&ag.bestSlip!=null?fmtPctU(ag.bestSlip,2):"–"}</td></tr></tbody></table></div>
+    <p class="muted" style="font-size:12px;margin:6px 0 0">★ primary venue, source of the candles. The "All" row sums depth across venues and shows the lowest slippage. Depth counts the top 100–200 book levels per venue; ≥ means those levels ended before ±2%, so true depth is higher.</p>`;
+}
+function drawSheet(r){
+  const f=r.f,g=S.gecko.get(r.base);
+  const supply=!S.gecko.size?`<p class="muted" style="margin:0">CoinGecko data unavailable.</p>`:!g?`<p class="muted" style="margin:0">${esc(r.base)} not matched in the top 1000 by market cap.</p>`:
+    `<dl class="kv"><dt>Market cap rank</dt><dd>#${g.market_cap_rank??"–"}</dd><dt>Market cap</dt><dd>$${fmtCompact(g.market_cap)}</dd>
+     <dt>FDV / market cap</dt><dd>${g.fully_diluted_valuation&&g.market_cap?fmtNum(g.fully_diluted_valuation/g.market_cap,2)+"×":"–"}</dd>
+     <dt>Circulating / total supply</dt><dd>${g.total_supply?fmtPctU(g.circulating_supply/g.total_supply):"–"}</dd><dt>Above all-time low</dt><dd>${fmtPct(g.atl_change_percentage/100,0)}</dd></dl>`;
+  const evHtml=r.events.length?`<div class="scroll"><table><thead><tr><th>Date</th><th>Spike</th><th>Gave back in</th></tr></thead><tbody>${r.events.map(e=>`<tr><td>${fmtDay(e.t)}</td><td class="pos">${fmtPct(e.spike,0)}</td><td>${e.days===0?"same day":e.days+" days"}</td></tr>`).join("")}</tbody></table></div>`
+    :`<p class="muted" style="margin:0">None detected in the last ${Math.min(CFG.pumpWin,r.bars)} days.</p>`;
+  const isC=S.chartTab!=="btc";
+  const legend=isC?`<span><i style="background:var(--phos);box-shadow:0 0 6px var(--phos)"></i>lit = closed up</span><span><i style="border:1.5px solid var(--phos-dim)"></i>unlit = closed down</span><span><i style="background:var(--cyan)"></i>volume</span><span style="color:var(--spark)">✳ pump-dump</span>`
+    :`<span><i style="background:var(--phos)"></i>USDT price</span><span><i style="background:var(--cyan)"></i>${esc(r.base)}/BTC</span><span><i style="background:var(--cyan)"></i>/<i style="background:var(--spark);margin-left:4px"></i>correlation</span>`;
+  $sheetIn.innerHTML=`<div class="grab"></div>
+  <div class="shead"><div class="grow"><div class="sym" id="sheetSym">${esc(r.base)}</div>
+    <div class="px">$${fmtPrice(r.price)} · 24h <span class="chg ${r.chg>=0?"up":"dn"}">${fmtPct(r.chg)}</span> · candles from ${VNAME[r.s.venue]}${r.s.offH?` (day starts ${r.s.offH>0?"+":""}${r.s.offH}h vs UTC)`:""}</div>
+    <div class="chips" style="margin-top:8px">${r.flags.map(x=>`<span class="chip ${x.k}">${esc(x.t)}</span>`).join("")}</div></div>
+    <div class="gauge"><span class="n mono">${r.score!=null?Math.round(r.score):"–"}</span><span class="cap">composite</span></div>
+    <button class="iconbtn" type="button" data-close aria-label="Close">✕</button></div>
+  <div class="sec" style="border-top:0;padding-top:4px">
+    <div class="scope">
+      <div class="scope-bar">
+        <span class="stabs" role="group" aria-label="Chart"><button type="button" data-stab="candles" aria-pressed="${isC}">Candles</button><button type="button" data-stab="btc" aria-pressed="${!isC}">vs BTC</button></span>
+        <span class="ranges" role="group" aria-label="Range">${[30,60,120].map(d=>`<button type="button" data-range="${d}" aria-pressed="${S.range===d}">${d}D</button>`).join("")}</span>
+      </div>
+      <canvas id="scopeCv" role="img" aria-label="${esc(r.base)} ${isC?"candles":"price versus BTC and rolling correlation"}, last ${S.range} days"></canvas>
+      <div class="readout" id="scopeRead">Touch or hover the chart to read a day.</div>
+      <div class="scope-legend">${legend}</div>
+      ${isC?"":btcStats(r)}
+    </div>
+  </div>
+  ${f?`<div class="sec"><h4>Score components</h4>
+    ${frow("Near low vs BTC",`${Math.round(f.pos*100)}% of range`,r.p&&r.p.low,"0% = the 120-day low of the coin/BTC ratio. The bar is the universe percentile.")}
+    ${frow("Volatility squeeze",fmtNum(f.sq,2)+"×",r.p&&r.p.sq,"20-day volatility divided by 120-day volatility. Lower = tighter.")}
+    ${frow("Volume anomaly",fmtNum(f.vr,2)+"×",r.p&&r.p.vol,"Mean volume of the last 3 days over the median of the prior 30, on the primary venue.")}
+    ${frow("5d / 30d return",`${fmtPct(f.ret5)} / ${fmtPct(f.ret30)}`,null,"Context only, not scored.")}</div>`
+    :`<div class="sec"><p class="muted">${r.bars} days of data, ${CFG.minBars} needed for a score.</p></div>`}
+  <div class="sec"><h4><span>Fundamentals · not scored</span>${r.deep&&r.deep.done?`<button class="btn ghost small" type="button" data-redeep>Refresh</button>`:""}</h4>${fundamentals(r)}</div>
+  <div class="sec"><h4>Liquidity by exchange</h4>${liquidity(r)}</div>
+  <div class="sec"><h4>Supply · CoinGecko</h4>${supply}</div>
+  <div class="sec"><h4>Pump-dump history</h4>${evHtml}</div>
+  <div class="sec links">${VENUES.filter(v=>r.u.venues[v]).map(v=>`<a href="${tradeUrl(v,r.base)}" target="_blank" rel="noopener">${VNAME[v]}</a>`).join("")}
+    ${g?`<a href="https://www.coingecko.com/en/coins/${encodeURIComponent(g.id)}" target="_blank" rel="noopener">CoinGecko</a>`:""}</div>`;
+  requestAnimationFrame(()=>{redrawScope();bindScope();});
+}
+function tradeUrl(v,base){const b=encodeURIComponent(base);return {binance:`https://www.binance.com/en/trade/${b}_USDT`,bybit:`https://www.bybit.com/en/trade/spot/${b}/USDT`,okx:`https://www.okx.com/trade-spot/${b.toLowerCase()}-usdt`,kucoin:`https://www.kucoin.com/trade/${b}-USDT`}[v];}
+
+/* ================= tabs, filters, theme ================= */
+document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>{
+  document.querySelectorAll(".tab").forEach(x=>x.setAttribute("aria-selected",x===t?"true":"false"));
+  ["list","val","src","meth"].forEach(k=>$("view-"+k).hidden=k!==t.dataset.tab);if(t.dataset.tab==="src")renderSrc();
+}));
+document.querySelectorAll("[data-sort]").forEach(b=>b.addEventListener("click",()=>{S.sort=b.dataset.sort;document.querySelectorAll("[data-sort]").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));renderList();}));
+$("hideFlag").addEventListener("change",e=>{S.hideFlag=e.target.checked;renderList()});
+$("offBn").addEventListener("change",e=>{S.offBn=e.target.checked;renderList()});
+$("expCsv").addEventListener("click",exportCandidates);
+$("themeBtn").addEventListener("click",()=>{
+  const root=document.documentElement;const dark=root.dataset.theme?root.dataset.theme==="dark":matchMedia("(prefers-color-scheme: dark)").matches;
+  root.dataset.theme=dark?"light":"dark";try{localStorage.setItem("seis.theme",root.dataset.theme)}catch(e){}drawTrace();if(openSym)redrawScope();
+});
+try{const t=localStorage.getItem("seis.theme");if(t)document.documentElement.dataset.theme=t;}catch(e){}
+$btn.addEventListener("click",scan);
+
+syncSetUI();renderSummary();renderList();renderVal();renderSrc();drawTrace();
+scan();
+</script>
+</body>
+</html>
